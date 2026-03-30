@@ -6,25 +6,29 @@ Local LLM inference stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 
 
 ## Stack
 
-| Tier | Model | Size | Port |
+| Service | Image | Port | Notes |
 |---|---|---|---|
-| Reasoning | QwQ-32B Q4\_K\_M | 19 GB | 8080 |
-| Code | Qwen2.5-Coder-32B Q4\_K\_M | 19 GB | 8081 |
-| Fast / embed | Qwen2.5-14B Q4\_K\_M | 9 GB | 8082 |
+| postgres | `postgres:16-alpine` | 5432 | Backing store for LiteLLM |
+| litellm | `ghcr.io/berriai/litellm:main-stable` | 4000 | OpenAI-compatible proxy (v1.82.3-stable.patch.2) |
+| ramalama-reasoning | `quay.io/ramalama/rocm:latest` | 8080 | QwQ-32B Q4\_K\_M (19 GB) |
+| ramalama-code | `quay.io/ramalama/rocm:latest` | 8081 | Qwen2.5-Coder-32B Q4\_K\_M (19 GB) |
+| ramalama-fast | `quay.io/ramalama/rocm:latest` | 8082 | Qwen2.5-14B Q4\_K\_M (9 GB), `--embeddings --pooling mean` |
+| open-webui | `ghcr.io/open-webui/open-webui:v0.8.6` | 3000 | Chat UI, pinned to v0.8.6 |
 
-All inference containers use the upstream llama.cpp ROCm image (`ghcr.io/ggml-org/llama.cpp:full-rocm`). Models are pulled and managed by [RamaLama](https://github.com/containers/ramalama). LiteLLM provides a single OpenAI-compatible endpoint at `:4000` that routes across all tiers.
+Models are pulled and managed by [RamaLama](https://github.com/containers/ramalama). LiteLLM provides a single OpenAI-compatible endpoint at `:4000` that routes across all tiers.
 
 ## Prerequisites
 
 - Fedora 43
 - AMD Ryzen AI Max+ 395 (gfx1151) or similar AMD iGPU/dGPU with ROCm support
 - ~55 GB free disk space for models
+- **BIOS: UMA frame buffer must be set to full unified (not split 50/50) — GPU needs ~98 GB visibility**
 
 ## First-time setup
 
 ```bash
-git clone https://github.com/<you>/llm-stack
-cd llm-stack
+git clone https://github.com/aclater/llm-stack-final
+cd llm-stack-final
 chmod +x llm-stack.sh
 
 ./llm-stack.sh deps          # install system packages (sudo)
@@ -32,7 +36,7 @@ chmod +x llm-stack.sh
 ./llm-stack.sh setup         # verify GPU, write configs
 ./llm-stack.sh pull-image    # pull the RamaLama ROCm container image
 ./llm-stack.sh pull-models   # download all models (~50 GB)
-./llm-stack.sh install       # install quadlets to systemd
+./llm-stack.sh install       # install quadlets to systemd + fix SELinux labels
 ./llm-stack.sh up            # start everything
 ```
 
@@ -73,7 +77,7 @@ Available model aliases:
 | `reasoning` | QwQ-32B on :8080 |
 | `code` | Qwen2.5-Coder-32B on :8081 |
 | `fast` | Qwen2.5-14B on :8082 |
-| `embed` | nomic-embed-text on :8082 |
+| `embed` | Qwen2.5-14B on :8082 (mean pooling) |
 
 ## Hardware notes
 
@@ -81,15 +85,23 @@ Available model aliases:
 
 **Unified memory:** `LLAMA_HIP_UMA=1` is set in all inference containers, which tells llama.cpp to treat the 128 GB unified pool as one flat allocation space rather than staging copies between system RAM and "VRAM."
 
+**SELinux:** All ramalama quadlets require `SecurityLabelDisable=true` because SELinux blocks `/dev/kfd` access in the user systemd context. `cmd_install` automatically runs `chcon -t container_ro_file_t -l s0` on all `.gguf` model files.
+
 **quay.io outages:** `pull-image` automatically falls back to `ghcr.io/ggml-org/llama.cpp:full-rocm` if quay.io is unreachable. quay.io status: https://status.redhat.com
 
-## Security note
+## Implementation notes
 
-LiteLLM is pinned to `v1.82.6` — the last version audited clean following the [March 2026 supply chain incident](https://docs.litellm.ai/blog/security-update-march-2026) in which versions 1.82.7 and 1.82.8 were compromised. Do not upgrade without reviewing the security advisory.
+**LiteLLM** uses `main-stable` (currently v1.82.3-stable.patch.2), backed by postgres:16-alpine. It is not pinned to a specific version tag.
+
+**Open WebUI** is pinned to v0.8.6. It uses `DATABASE_URL=sqlite:////app/backend/data/webui.db` (not the postgres instance — that's for LiteLLM). It runs on port 3000 via `PORT=3000` because `Network=host` would otherwise conflict with ramalama-reasoning on :8080.
+
+**Environment variables:** `OPENAI_API_KEY` and all shared secrets live in `env.example` / `~/.config/llm-stack/env`. Systemd does not expand `EnvironmentFile` vars inside `Environment=` lines, so all vars that need cross-referencing must be set directly in the env file.
+
+**Embeddings:** ramalama-fast serves embeddings via `--embeddings --pooling mean`. Note that LiteLLM sends `encoding_format: null` to llama.cpp by default, which crashes it — the smoke test passes `encoding_format: "float"` explicitly.
 
 ## AIMI (Chatterbox Labs / Red Hat)
 
-A stub service slot is reserved for the [AIMI](https://www.redhat.com/en/about/press-releases/red-hat-accelerates-ai-trust-and-security-chatterbox-labs-acquisition) guardrails platform once it becomes available via Red Hat channels. See the commented block in `quadlets/litellm.container`.
+A stub service slot is reserved for the [AIMI](https://www.redhat.com/en/about/press-releases/red-hat-accelerates-ai-trust-and-security-chatterbox-labs-acquisition) guardrails platform once it becomes available via Red Hat channels. See the commented block in `configs/litellm-config.yaml`.
 
 ## License
 
