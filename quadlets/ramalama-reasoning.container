@@ -1,0 +1,47 @@
+# ~/.config/containers/systemd/ramalama-reasoning.container
+# Reasoning tier — QwQ-32B via RamaLama ROCm container
+# Managed by: systemctl --user [start|stop|restart|status] ramalama-reasoning
+#
+# This quadlet is generated as a template; ramalama serve --generate=quadlet
+# produces the same structure. Hand-edited here for explicit ctx-size and
+# HSA_OVERRIDE_GFX_VERSION for AI Max+ 395 (gfx1151).
+
+[Unit]
+Description=RamaLama reasoning model (QwQ-32B)
+After=local-fs.target network-online.target
+Wants=network-online.target
+
+[Container]
+# RamaLama auto-selects rocm image on AMD hardware;
+# pin explicitly so the unit is self-contained.
+Image=quay.io/ramalama/rocm:latest
+
+# GPU passthrough — /dev/kfd (compute) + /dev/dri (render)
+AddDevice=-/dev/kfd
+AddDevice=-/dev/dri
+SecurityLabelDisable=true
+
+# Unified memory flag — critical for AI Max+ 395 iGPU
+Environment=LLAMA_HIP_UMA=1
+# GFX version override for AI Max+ 395; remove once ROCm ships gfx1151 support
+Environment=HSA_OVERRIDE_GFX_VERSION=11.5.1
+Environment=AMD_LOG_LEVEL=0
+
+# Model bind-mount — RamaLama stores models under ~/.local/share/ramalama
+Mount=type=bind,src=MODEL_PATH_PLACEHOLDER,target=/mnt/models/model.file,ro,Z
+
+Exec=llama-server --model /mnt/models/model.file --host 0.0.0.0 --port 8080 --ctx-size 32768 --n-gpu-layers 999 --threads 16 --parallel 2 --flash-attn on
+
+ContainerName=ramalama-reasoning
+PublishPort=8080:8080
+
+# Keep container alive across restarts
+
+[Service]
+Restart=on-failure
+RestartSec=10s
+# Give the model time to load into unified memory
+TimeoutStartSec=180s
+
+[Install]
+WantedBy=default.target

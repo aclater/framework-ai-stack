@@ -1,0 +1,34 @@
+# ~/.config/containers/systemd/ramalama-code.container
+# Code tier — Qwen2.5-Coder-32B via RamaLama ROCm container
+
+[Unit]
+Description=RamaLama code model (Qwen2.5-Coder-32B)
+After=local-fs.target network-online.target
+Wants=network-online.target
+
+[Container]
+Image=quay.io/ramalama/rocm:latest
+
+AddDevice=-/dev/kfd
+AddDevice=-/dev/dri
+SecurityLabelDisable=true
+
+Environment=LLAMA_HIP_UMA=1
+Environment=HSA_OVERRIDE_GFX_VERSION=11.5.1
+Environment=AMD_LOG_LEVEL=0
+
+Mount=type=bind,src=MODEL_PATH_PLACEHOLDER,target=/mnt/models/model.file,ro,Z
+
+Exec=llama-server --model /mnt/models/model.file --host 0.0.0.0 --port 8081 --ctx-size 32768 --n-gpu-layers 999 --threads 16 --parallel 2 --flash-attn on
+
+ContainerName=ramalama-code
+PublishPort=8081:8081
+
+
+[Service]
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=180s
+
+[Install]
+WantedBy=default.target

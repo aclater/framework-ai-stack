@@ -1,0 +1,33 @@
+# ~/.config/containers/systemd/litellm.container
+# LiteLLM proxy — main-stable (v1.82.3-stable.patch.2 as of March 2026)
+# Security note: https://docs.litellm.ai/blog/security-update-march-2026
+
+[Unit]
+Description=LiteLLM proxy
+After=local-fs.target network-online.target postgres.service
+Wants=network-online.target
+
+[Container]
+Image=ghcr.io/berriai/litellm:main-stable
+
+Volume=%h/.config/llm-stack/litellm-config.yaml:/app/config.yaml:ro,Z
+
+EnvironmentFile=%h/.config/llm-stack/env
+
+Environment=DATABASE_URL=postgresql://litellm:litellm@localhost:5432/litellm
+Environment=STORE_MODEL_IN_DB=True
+
+Network=host
+
+Exec=--config /app/config.yaml --port 4000
+
+ContainerName=litellm
+PublishPort=4000:4000
+
+[Service]
+Restart=on-failure
+RestartSec=15s
+TimeoutStartSec=120s
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,2 @@
+# Never commit the env file — it may contain keys
+.env

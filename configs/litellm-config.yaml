@@ -1,0 +1,88 @@
+# LiteLLM config — all inference tiers via RamaLama quadlets
+# reasoning → localhost:8080  (ramalama-reasoning)
+# code      → localhost:8081  (ramalama-code)
+# fast      → localhost:8082  (ramalama-fast)
+
+model_list:
+
+  # ── Reasoning tier ──────────────────────────────────────────────────────
+  - model_name: reasoning
+    litellm_params:
+      model: openai/reasoning
+      api_base: http://localhost:8080/v1
+      api_key: none
+      timeout: 300
+
+  - model_name: qwq-32b
+    litellm_params:
+      model: openai/reasoning
+      api_base: http://localhost:8080/v1
+      api_key: none
+      timeout: 300
+
+  # ── Code tier ────────────────────────────────────────────────────────────
+  - model_name: code
+    litellm_params:
+      model: openai/code
+      api_base: http://localhost:8081/v1
+      api_key: none
+      timeout: 120
+
+  - model_name: qwen-coder
+    litellm_params:
+      model: openai/code
+      api_base: http://localhost:8081/v1
+      api_key: none
+      timeout: 120
+
+  # ── Fast / draft tier ────────────────────────────────────────────────────
+  - model_name: fast
+    litellm_params:
+      model: openai/fast
+      api_base: http://localhost:8082/v1
+      api_key: none
+      timeout: 60
+
+  - model_name: draft
+    litellm_params:
+      model: openai/fast
+      api_base: http://localhost:8082/v1
+      api_key: none
+      timeout: 60
+
+  # ── Embeddings ────────────────────────────────────────────────────────────
+  # Embeddings via ramalama-fast (llama.cpp --embeddings --pooling mean)
+  - model_name: embed
+    litellm_params:
+      model: openai/fast
+      api_base: http://localhost:8082/v1
+      api_key: none
+
+  - model_name: text-embedding-ada-002
+    litellm_params:
+      model: openai/fast
+      api_base: http://localhost:8082/v1
+      api_key: none
+
+  # ── AIMI stub — uncomment when Red Hat image available ───────────────────
+  # - model_name: aimi-guarded
+  #   litellm_params:
+  #     model: openai/reasoning
+  #     api_base: http://localhost:8090/v1   # AIMI guardrail proxy endpoint
+  #     api_key: none
+  #     timeout: 300
+
+router_settings:
+  routing_strategy: simple-shuffle
+  fallbacks:
+    - reasoning: [fast]
+    - code: [fast]
+  num_retries: 2
+  timeout: 300
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+
+litellm_settings:
+  drop_params: true
+  set_verbose: false

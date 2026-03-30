@@ -1,0 +1,33 @@
+# ~/.config/containers/systemd/open-webui.container
+# Open WebUI — pinned to v0.8.6 (stable, March 2026)
+
+[Unit]
+Description=Open WebUI
+After=local-fs.target network-online.target
+Wants=network-online.target
+
+[Container]
+Image=ghcr.io/open-webui/open-webui:v0.8.6
+
+Volume=open-webui-data.volume:/app/backend/data
+
+# Load WEBUI_SECRET_KEY and LITELLM_MASTER_KEY from env file.
+# Override DATABASE_URL: the env file contains the litellm postgres URL
+# which open-webui must not use. Point it at its own SQLite file instead
+# (empty string triggers an UnboundLocalError in db.py handle_peewee_migration).
+EnvironmentFile=%h/.config/llm-stack/env
+Environment=DATABASE_URL=sqlite:////app/backend/data/webui.db
+Environment=OPENAI_API_BASE_URL=http://localhost:4000/v1
+Environment=PORT=3000
+
+Network=host
+
+ContainerName=open-webui
+
+[Service]
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=120s
+
+[Install]
+WantedBy=default.target

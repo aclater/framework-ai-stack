@@ -1,0 +1,36 @@
+# ~/.config/containers/systemd/ramalama-fast.container
+# Fast/draft/embedding tier — Qwen2.5-14B via RamaLama ROCm container
+# Also serves nomic-embed-text via Ollama model path for embeddings.
+# Swap between chat and embed models using: make swap-fast
+
+[Unit]
+Description=RamaLama fast model (Qwen2.5-14B)
+After=local-fs.target network-online.target
+Wants=network-online.target
+
+[Container]
+Image=quay.io/ramalama/rocm:latest
+
+AddDevice=-/dev/kfd
+AddDevice=-/dev/dri
+SecurityLabelDisable=true
+
+Environment=LLAMA_HIP_UMA=1
+Environment=HSA_OVERRIDE_GFX_VERSION=11.5.1
+Environment=AMD_LOG_LEVEL=0
+
+Mount=type=bind,src=MODEL_PATH_PLACEHOLDER,target=/mnt/models/model.file,ro,Z
+
+Exec=llama-server --model /mnt/models/model.file --host 0.0.0.0 --port 8082 --ctx-size 16384 --n-gpu-layers 999 --threads 8 --parallel 4 --flash-attn on --embeddings --pooling mean
+
+ContainerName=ramalama-fast
+PublishPort=8082:8082
+
+
+[Service]
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=120s
+
+[Install]
+WantedBy=default.target

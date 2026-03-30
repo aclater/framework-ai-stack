@@ -1,0 +1,26 @@
+# ~/.config/containers/systemd/postgres.container
+# PostgreSQL for LiteLLM
+
+[Unit]
+Description=PostgreSQL for LiteLLM
+After=local-fs.target
+
+[Container]
+Image=docker.io/library/postgres:16-alpine
+
+Volume=litellm-db-data.volume:/var/lib/postgresql/data:Z
+
+Environment=POSTGRES_USER=litellm
+Environment=POSTGRES_PASSWORD=litellm
+Environment=POSTGRES_DB=litellm
+
+Network=host
+
+ContainerName=postgres
+
+[Service]
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=default.target
