@@ -16,6 +16,7 @@ SecurityLabelDisable=true
 Environment=LLAMA_HIP_UMA=1
 Environment=HSA_OVERRIDE_GFX_VERSION=11.5.1
 Environment=AMD_LOG_LEVEL=0
+Environment=GPU_MAX_HW_QUEUES=1
 
 Mount=type=bind,src=MODEL_PATH_PLACEHOLDER,target=/mnt/models/model.file,ro,Z
 

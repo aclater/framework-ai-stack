@@ -26,6 +26,8 @@ Environment=LLAMA_HIP_UMA=1
 # GFX version override for AI Max+ 395; remove once ROCm ships gfx1151 support
 Environment=HSA_OVERRIDE_GFX_VERSION=11.5.1
 Environment=AMD_LOG_LEVEL=0
+# Limit HW queues to reduce idle GPU busy-spin on gfx1151
+Environment=GPU_MAX_HW_QUEUES=1
 
 # Model bind-mount — RamaLama stores models under ~/.local/share/ramalama
 Mount=type=bind,src=MODEL_PATH_PLACEHOLDER,target=/mnt/models/model.file,ro,Z
