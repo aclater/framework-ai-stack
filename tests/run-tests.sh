@@ -71,6 +71,11 @@ assert_file_exists() {
     [[ -f "$path" ]] && pass "$desc" || fail "$desc ($path not found)"
 }
 
+assert_file_not_exists() {
+    local desc="$1" path="$2"
+    [[ ! -f "$path" ]] && pass "$desc" || fail "$desc ($path should not exist)"
+}
+
 assert_file_contains() {
     local desc="$1" path="$2" needle="$3"
     if [[ -f "$path" ]] && grep -q "$needle" "$path"; then
@@ -111,8 +116,6 @@ assert_exit_nonzero "unknown command exits non-zero" bash "$SCRIPT" definitely-n
 # ── 2. Registry check logic ───────────────────────────────────────────────────
 
 section "2. Registry check logic"
-
-# Extract and test the check_registry function in isolation
 
 # Test HTTP status parsing directly
 _test_status() {
@@ -220,13 +223,13 @@ section "4. Quadlet files"
 
 QUADLET_SRC="$REPO_DIR/quadlets"
 
-assert_file_exists "ramalama-reasoning.container" "$QUADLET_SRC/ramalama-reasoning.container"
-assert_file_exists "ramalama-code.container"      "$QUADLET_SRC/ramalama-code.container"
-assert_file_exists "ramalama-fast.container"      "$QUADLET_SRC/ramalama-fast.container"
-assert_file_exists "litellm.container"            "$QUADLET_SRC/litellm.container"
-assert_file_exists "open-webui.container"         "$QUADLET_SRC/open-webui.container"
-assert_file_exists "litellm-db-data.volume"       "$QUADLET_SRC/litellm-db-data.volume"
-assert_file_exists "open-webui-data.volume"       "$QUADLET_SRC/open-webui-data.volume"
+assert_file_exists     "ramalama-reasoning.container" "$QUADLET_SRC/ramalama-reasoning.container"
+assert_file_not_exists "ramalama-code.container removed"  "$QUADLET_SRC/ramalama-code.container"
+assert_file_not_exists "ramalama-fast.container removed"  "$QUADLET_SRC/ramalama-fast.container"
+assert_file_exists     "litellm.container"            "$QUADLET_SRC/litellm.container"
+assert_file_exists     "open-webui.container"         "$QUADLET_SRC/open-webui.container"
+assert_file_exists     "litellm-db-data.volume"       "$QUADLET_SRC/litellm-db-data.volume"
+assert_file_exists     "open-webui-data.volume"       "$QUADLET_SRC/open-webui-data.volume"
 
 # No PullPolicy — not supported in this podman-quadlet version
 for f in "$QUADLET_SRC"/ramalama-*.container; do
@@ -234,28 +237,25 @@ for f in "$QUADLET_SRC"/ramalama-*.container; do
         "PullPolicy" "$(cat $f)"
 done
 
-# No quay.io references in ramalama quadlets (should use ghcr.io fallback image or be templated)
+# Image line must exist in ramalama quadlets
 for f in "$QUADLET_SRC"/ramalama-*.container; do
     name=$(basename $f)
-    # Image line must exist
     assert_contains "$name has Image= line" "^Image=" "$(grep "^Image=" $f || true)"
 done
 
-# litellm must not reference litellm-db.service in After=
+# litellm checks
 assert_contains "litellm uses main-stable image"    "main-stable"          "$(cat $QUADLET_SRC/litellm.container)"
 assert_not_contains "litellm has no bad env interpolation" 'LITELLM_MASTER_KEY=${' "$(cat $QUADLET_SRC/litellm.container)"
 assert_contains "litellm loads env file"           "EnvironmentFile"      "$(cat $QUADLET_SRC/litellm.container)"
 
-# litellm must not have DATABASE_URL
+# litellm must have DATABASE_URL
 assert_contains "litellm has postgres DATABASE_URL" \
     "DATABASE_URL=postgresql" "$(cat $QUADLET_SRC/litellm.container)"
 
-# All ramalama containers must expose correct ports
+# Reasoning container publishes 8080
 assert_contains "reasoning publishes 8080" "8080" "$(cat $QUADLET_SRC/ramalama-reasoning.container)"
-assert_contains "code publishes 8081"      "8081" "$(cat $QUADLET_SRC/ramalama-code.container)"
-assert_contains "fast publishes 8082"      "8082" "$(cat $QUADLET_SRC/ramalama-fast.container)"
 
-# GPU device passthrough present in all ramalama containers
+# GPU device passthrough present in ramalama container
 for f in "$QUADLET_SRC"/ramalama-*.container; do
     assert_contains "$(basename $f) has /dev/kfd" "/dev/kfd" "$(cat $f)"
     assert_contains "$(basename $f) has /dev/dri" "/dev/dri" "$(cat $f)"
@@ -267,11 +267,14 @@ for f in "$QUADLET_SRC"/ramalama-*.container; do
     assert_contains "$(basename $f) has HSA_OVERRIDE_GFX_VERSION" "HSA_OVERRIDE_GFX_VERSION" "$(cat $f)"
 done
 
-# Mount lines use placeholder — resolved at install time from ramalama store
+# Mount line uses placeholder — resolved at install time from ramalama store
 assert_contains "reasoning mount placeholder present" "MODEL_PATH_PLACEHOLDER" "$(cat $QUADLET_SRC/ramalama-reasoning.container)"
-assert_contains "code mount placeholder present"      "MODEL_PATH_PLACEHOLDER" "$(cat $QUADLET_SRC/ramalama-code.container)"
-assert_contains "fast mount placeholder present"      "MODEL_PATH_PLACEHOLDER" "$(cat $QUADLET_SRC/ramalama-fast.container)"
 assert_contains "reasoning mounts to /mnt/models"    "/mnt/models/model.file" "$(cat $QUADLET_SRC/ramalama-reasoning.container)"
+
+# DeepSeek-R1 specific checks
+assert_contains "reasoning description is DeepSeek-R1" "DeepSeek-R1-70B" "$(cat $QUADLET_SRC/ramalama-reasoning.container)"
+assert_contains "reasoning has ctx-size 65536" "65536" "$(cat $QUADLET_SRC/ramalama-reasoning.container)"
+assert_contains "reasoning has parallel 4" "parallel 4" "$(cat $QUADLET_SRC/ramalama-reasoning.container)"
 
 # ── 5. LiteLLM config ────────────────────────────────────────────────────────
 
@@ -280,20 +283,23 @@ section "5. LiteLLM config"
 LITELLM_CFG="$REPO_DIR/configs/litellm-config.yaml"
 assert_file_exists "litellm-config.yaml exists" "$LITELLM_CFG"
 
-for alias in reasoning code fast embed; do
+for alias in default reasoning code; do
     assert_contains "config has '$alias' alias" "model_name: $alias" "$(cat $LITELLM_CFG)"
 done
 
-assert_contains "reasoning routes to :8080" "8080" "$(cat $LITELLM_CFG)"
-assert_contains "code routes to :8081"      "8081" "$(cat $LITELLM_CFG)"
-assert_contains "fast routes to :8082"      "8082" "$(cat $LITELLM_CFG)"
+# All aliases route to :8080
+assert_contains "default routes to :8080" "8080" "$(cat $LITELLM_CFG)"
+assert_not_contains "no :8081 references" "8081" "$(cat $LITELLM_CFG)"
+assert_not_contains "no :8082 references" "8082" "$(cat $LITELLM_CFG)"
+assert_not_contains "no embed alias" "model_name: embed" "$(cat $LITELLM_CFG)"
+assert_not_contains "no fast alias" "model_name: fast" "$(cat $LITELLM_CFG)"
 assert_not_contains "no DATABASE_URL in config" "DATABASE_URL" "$(cat $LITELLM_CFG)"
 assert_contains "drop_params enabled" "drop_params: true" "$(cat $LITELLM_CFG)"
 assert_contains "master key set" "LITELLM_MASTER_KEY" "$(cat $LITELLM_CFG)"
 
 # Validate YAML is parseable
 if command -v python3 &>/dev/null; then
-    YAML_OK=$(python3 -c "import sys; 
+    YAML_OK=$(python3 -c "import sys;
 try:
     import yaml; yaml.safe_load(open('$LITELLM_CFG')); print('ok')
 except ImportError:
@@ -349,11 +355,11 @@ section "8. Model URLs in script"
 
 SCRIPT_CONTENT=$(cat "$SCRIPT")
 
-assert_contains     "QwQ-32B URL present"           "QwQ-32B-GGUF/qwq-32b-q4_k_m.gguf"          "$SCRIPT_CONTENT"
-assert_contains     "Qwen-Coder-32B URL present"    "Qwen2.5-Coder-32B-Instruct-GGUF"            "$SCRIPT_CONTENT"
-assert_contains     "14B uses bartowski"             "bartowski/Qwen2.5-14B-Instruct-GGUF"        "$SCRIPT_CONTENT"
-assert_not_contains "14B not from Qwen official"    "Qwen/Qwen2.5-14B-Instruct-GGUF"             "$SCRIPT_CONTENT"
-assert_contains     "nomic-embed-text present"      "ollama://nomic-embed-text"                  "$SCRIPT_CONTENT"
+assert_contains     "DeepSeek-R1 URL present"       "bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf" "$SCRIPT_CONTENT"
+assert_not_contains "QwQ-32B URL removed"            "QwQ-32B-GGUF"                                       "$SCRIPT_CONTENT"
+assert_not_contains "Qwen-Coder-32B URL removed"     "Qwen2.5-Coder-32B-Instruct-GGUF"                    "$SCRIPT_CONTENT"
+assert_not_contains "14B URL removed"                 "Qwen2.5-14B-Instruct-GGUF"                          "$SCRIPT_CONTENT"
+assert_contains     "nomic-embed-text present"        "ollama://nomic-embed-text"                          "$SCRIPT_CONTENT"
 
 # ── 10. Model path resolver ───────────────────────────────────────────────────
 
@@ -365,8 +371,8 @@ source <(awk '/^_resolve_model_path\(\)/,/^}/' "$SCRIPT")
 # Create a fake ramalama store structure
 FAKE_STORE="$(mktemp -d)"
 SHA="sha256-abc123def456"
-mkdir -p "$FAKE_STORE/huggingface/Qwen/QwQ-32B-GGUF/qwq-32b-q4_k_m.gguf/snapshots/$SHA"
-touch "$FAKE_STORE/huggingface/Qwen/QwQ-32B-GGUF/qwq-32b-q4_k_m.gguf/snapshots/$SHA/qwq-32b-q4_k_m.gguf"
+mkdir -p "$FAKE_STORE/huggingface/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf/snapshots/$SHA"
+touch "$FAKE_STORE/huggingface/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf/snapshots/$SHA/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf"
 
 # Override HOME to point at our fake store
 RESOLVER_HOME="$(mktemp -d)"
@@ -374,12 +380,12 @@ mkdir -p "$RESOLVER_HOME/.local/share/ramalama"
 ln -s "$FAKE_STORE" "$RESOLVER_HOME/.local/share/ramalama/store"
 
 RESOLVED=$(HOME="$RESOLVER_HOME" _resolve_model_path \
-    "huggingface/Qwen/QwQ-32B-GGUF/qwq-32b-q4_k_m.gguf" \
-    "qwq-32b-q4_k_m.gguf")
+    "huggingface/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf" \
+    "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf")
 
-assert_contains "resolver finds model under snapshots"  "snapshots"             "$RESOLVED"
-assert_contains "resolver finds correct filename"       "qwq-32b-q4_k_m.gguf"  "$RESOLVED"
-assert_contains "resolver returns absolute path"        "$RESOLVER_HOME"        "$RESOLVED"
+assert_contains "resolver finds model under snapshots"  "snapshots"              "$RESOLVED"
+assert_contains "resolver finds correct filename"       "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf" "$RESOLVED"
+assert_contains "resolver returns absolute path"        "$RESOLVER_HOME"         "$RESOLVED"
 
 # Missing model returns empty string (not an error)
 MISSING=$(HOME="$RESOLVER_HOME" _resolve_model_path \

@@ -9,7 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QUADLET_DIR="$HOME/.config/containers/systemd"
 CONFIG_DIR="$HOME/.config/llm-stack"
-UNITS=(postgres ramalama-reasoning ramalama-code ramalama-fast litellm open-webui)
+UNITS=(postgres ramalama-reasoning litellm open-webui)
 
 # Registry candidates for the ROCm image, in preference order
 ROCM_IMAGES=(
@@ -43,7 +43,7 @@ ${BOLD}First-time setup (run in order):${RESET}
   groups        add user to render/video groups       [needs sudo + reboot]
   setup         verify GPU, write configs
   pull-image    pull the RamaLama ROCm container image
-  pull-models   download all models (~50 GB)
+  pull-models   download model (~40 GB)
   install       install quadlets to systemd
   up            start all services
 
@@ -52,18 +52,15 @@ ${BOLD}Operations:${RESET}
   down          stop all services
   restart       restart all services
   status        show unit states
-  test          smoke-test all inference tiers
+  test          smoke-test inference
 
 ${BOLD}Logs:${RESET}
-  logs reasoning    follow reasoning model logs
-  logs code         follow code model logs
-  logs fast         follow fast/draft model logs
+  logs model        follow model logs
   logs proxy        follow LiteLLM proxy logs
 
 ${BOLD}Models:${RESET}
   pull-image              pull ROCm container image (with registry fallback)
-  swap reasoning <hf://…> hot-swap reasoning model
-  swap code      <hf://…> hot-swap code model
+  swap <hf://…>           hot-swap the model
 
 ${BOLD}Teardown:${RESET}
   uninstall     remove quadlets (models kept)
@@ -71,9 +68,7 @@ ${BOLD}Teardown:${RESET}
 ${BOLD}Endpoints (once running):${RESET}
   LiteLLM proxy  →  http://localhost:4000
   Open WebUI     →  http://localhost:3000
-  Reasoning      →  http://localhost:8080
-  Code           →  http://localhost:8081
-  Fast / embed   →  http://localhost:8082
+  DeepSeek-R1    →  http://localhost:8080
 
 EOF
 }
@@ -262,19 +257,10 @@ cmd_pull_image() {
 # ── Model pulling ─────────────────────────────────────────────────────────────
 
 cmd_pull_models() {
-    header "Pulling models via ramalama (~50 GB total)"
+    header "Pulling models via ramalama (~40 GB total)"
 
-    log "Reasoning: QwQ-32B Q4_K_M (~19 GB)..."
-    ramalama pull hf://Qwen/QwQ-32B-GGUF/qwq-32b-q4_k_m.gguf
-    echo ""
-
-    log "Code: Qwen2.5-Coder-32B Q4_K_M (~19 GB)..."
-    ramalama pull hf://Qwen/Qwen2.5-Coder-32B-Instruct-GGUF/qwen2.5-coder-32b-instruct-q4_k_m.gguf
-    echo ""
-
-    # Qwen's own 14B repo splits the file; bartowski provides a single unsplit file
-    log "Fast: Qwen2.5-14B Q4_K_M (~9 GB, via bartowski)..."
-    ramalama pull hf://bartowski/Qwen2.5-14B-Instruct-GGUF/Qwen2.5-14B-Instruct-Q4_K_M.gguf
+    log "DeepSeek-R1-70B Q4_K_M (~40 GB)..."
+    ramalama pull hf://bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf
     echo ""
 
     log "Embed: nomic-embed-text (~300 MB)..."
@@ -294,8 +280,8 @@ cmd_pull_models() {
 #   ~/.local/share/ramalama/store/<transport>/<org>/<repo>/<file>/snapshots/<sha>/<file>
 # This function finds the snapshot path for a given store subdirectory.
 _resolve_model_path() {
-    local store_subpath="$1"   # e.g. huggingface/Qwen/QwQ-32B-GGUF/qwq-32b-q4_k_m.gguf
-    local filename="$2"        # e.g. qwq-32b-q4_k_m.gguf
+    local store_subpath="$1"   # e.g. huggingface/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf
+    local filename="$2"        # e.g. DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf
     local store="$HOME/.local/share/ramalama/store"
     local snapdir="$store/$store_subpath/snapshots"
 
@@ -315,18 +301,14 @@ cmd_install() {
 
     # Map each quadlet to its store path and filename
     declare -A MODEL_STORE_PATH=(
-        [ramalama-reasoning]="huggingface/Qwen/QwQ-32B-GGUF/qwq-32b-q4_k_m.gguf"
-        [ramalama-code]="huggingface/Qwen/Qwen2.5-Coder-32B-Instruct-GGUF/qwen2.5-coder-32b-instruct-q4_k_m.gguf"
-        [ramalama-fast]="huggingface/bartowski/Qwen2.5-14B-Instruct-GGUF/Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+        [ramalama-reasoning]="huggingface/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf"
     )
     declare -A MODEL_FILENAME=(
-        [ramalama-reasoning]="qwq-32b-q4_k_m.gguf"
-        [ramalama-code]="qwen2.5-coder-32b-instruct-q4_k_m.gguf"
-        [ramalama-fast]="Qwen2.5-14B-Instruct-Q4_K_M.gguf"
+        [ramalama-reasoning]="DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf"
     )
 
     local missing=()
-    for unit in ramalama-reasoning ramalama-code ramalama-fast; do
+    for unit in ramalama-reasoning; do
         local resolved
         resolved=$(_resolve_model_path "${MODEL_STORE_PATH[$unit]}" "${MODEL_FILENAME[$unit]}")
         if [[ -z "$resolved" ]]; then
@@ -356,7 +338,7 @@ cmd_install() {
     cp "$SCRIPT_DIR"/quadlets/*.container "$QUADLET_DIR"/
     cp "$SCRIPT_DIR"/quadlets/*.volume    "$QUADLET_DIR"/
 
-    for unit in ramalama-reasoning ramalama-code ramalama-fast; do
+    for unit in ramalama-reasoning; do
         local resolved
         resolved=$(_resolve_model_path "${MODEL_STORE_PATH[$unit]}" "${MODEL_FILENAME[$unit]}")
         local quadlet="$QUADLET_DIR/$unit.container"
@@ -409,7 +391,7 @@ cmd_up() {
     echo ""
     if [[ ${#failed[@]} -gt 0 ]]; then
         warn "Some units failed: ${failed[*]}"
-        warn "Diagnose: ./llm-stack.sh logs <reasoning|code|fast|proxy>"
+        warn "Diagnose: ./llm-stack.sh logs <model|proxy>"
     else
         ok "All services started"
         echo ""
@@ -458,34 +440,25 @@ cmd_status() {
 cmd_logs() {
     local target="${1:-}"
     case "$target" in
-        reasoning) journalctl --user -u ramalama-reasoning -f ;;
-        code)      journalctl --user -u ramalama-code -f ;;
-        fast)      journalctl --user -u ramalama-fast -f ;;
-        proxy)     journalctl --user -u litellm -f ;;
-        webui)     journalctl --user -u open-webui -f ;;
-        *)         fail "Usage: ./llm-stack.sh logs <reasoning|code|fast|proxy|webui>" ;;
+        model|reasoning) journalctl --user -u ramalama-reasoning -f ;;
+        proxy)           journalctl --user -u litellm -f ;;
+        webui)           journalctl --user -u open-webui -f ;;
+        *)               fail "Usage: ./llm-stack.sh logs <model|proxy|webui>" ;;
     esac
 }
 
 # ── Model swap ────────────────────────────────────────────────────────────────
 
 cmd_swap() {
-    local tier="${1:-}" model="${2:-}"
-    [[ -n "$tier" && -n "$model" ]] || \
-        fail "Usage: ./llm-stack.sh swap <reasoning|code> <hf://...>"
-
-    local unit file
-    case "$tier" in
-        reasoning) unit="ramalama-reasoning"; file="ramalama-reasoning.container" ;;
-        code)      unit="ramalama-code";      file="ramalama-code.container" ;;
-        *) fail "Unknown tier '$tier' — use: reasoning or code" ;;
-    esac
+    local model="${1:-}"
+    [[ -n "$model" ]] || \
+        fail "Usage: ./llm-stack.sh swap <hf://...>"
 
     log "Pulling $model..."
     ramalama pull "$model"
 
-    warn "Update the Mount= path in quadlets/$file to match the new model path"
-    warn "Then run: ./llm-stack.sh install && systemctl --user restart $unit"
+    warn "Update the Mount= path in quadlets/ramalama-reasoning.container to match the new model path"
+    warn "Then run: ./llm-stack.sh install && systemctl --user restart ramalama-reasoning"
 }
 
 # ── Smoke tests ───────────────────────────────────────────────────────────────
@@ -495,44 +468,27 @@ cmd_test() {
     local key="sk-llm-stack-local"
     local all_ok=true
 
-    header "Smoke testing all tiers"
+    header "Smoke testing inference"
 
-    for tier in reasoning code fast; do
-        log "Testing $tier tier..."
-        local resp
-        if resp=$(curl -sf --max-time 90 "$api/chat/completions" \
-            -H "Authorization: Bearer $key" \
-            -H "Content-Type: application/json" \
-            -d "{\"model\":\"$tier\",\"messages\":[{\"role\":\"user\",\"content\":\"Reply with exactly one word: ready\"}],\"max_tokens\":5}" \
-            2>/dev/null); then
-            local content
-            content=$(echo "$resp" | python3 -c \
-                "import sys,json; print(json.load(sys.stdin)['choices'][0]['message']['content'].strip())" \
-                2>/dev/null || echo "?")
-            ok "$tier: $content"
-        else
-            warn "$tier: no response — check: ./llm-stack.sh logs $tier"
-            all_ok=false
-        fi
-    done
-
-    log "Testing embed tier..."
-    if resp=$(curl -sf --max-time 30 "$api/embeddings" \
+    log "Testing default model (DeepSeek-R1-70B on :8080)..."
+    local resp
+    if resp=$(curl -sf --max-time 90 "$api/chat/completions" \
         -H "Authorization: Bearer $key" \
         -H "Content-Type: application/json" \
-        -d '{"model":"embed","input":"local LLM stack","encoding_format":"float"}' 2>/dev/null); then
-        local dims
-        dims=$(echo "$resp" | python3 -c \
-            "import sys,json; print(len(json.load(sys.stdin)['data'][0]['embedding']))" \
+        -d '{"model":"default","messages":[{"role":"user","content":"Reply with exactly one word: ready"}],"max_tokens":5}' \
+        2>/dev/null); then
+        local content
+        content=$(echo "$resp" | python3 -c \
+            "import sys,json; print(json.load(sys.stdin)['choices'][0]['message']['content'].strip())" \
             2>/dev/null || echo "?")
-        ok "embed: $dims dims"
+        ok "default: $content"
     else
-        warn "embed: no response"
+        warn "default: no response — check: ./llm-stack.sh logs model"
         all_ok=false
     fi
 
     echo ""
-    $all_ok && ok "All tiers healthy" || warn "Some tiers failed — check logs"
+    $all_ok && ok "Inference healthy" || warn "Inference failed — check logs"
 }
 
 # ── Entrypoint ────────────────────────────────────────────────────────────────
