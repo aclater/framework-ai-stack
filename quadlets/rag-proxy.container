@@ -24,6 +24,8 @@ Environment=MODEL_URL=http://host.containers.internal:8080
 Environment=QDRANT_URL=http://host.containers.internal:6333
 Environment=QDRANT_COLLECTION=documents
 Environment=EMBED_MODEL=sentence-transformers/all-mpnet-base-v2
+# Force CPU — ROCm PyTorch segfaults on gfx1151 for sentence-transformers
+Environment=EMBED_DEVICE=cpu
 Environment=RAG_TOP_K=20
 Environment=RAG_PROXY_PORT=8090
 

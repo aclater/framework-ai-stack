@@ -68,8 +68,12 @@ def startup():
     if COLLECTION_NAME not in collections:
         log.warning("Collection '%s' not found in Qdrant — RAG context will be empty until documents are ingested", COLLECTION_NAME)
 
-    log.info("Loading embedding model: %s", EMBED_MODEL)
-    embedder = SentenceTransformer(EMBED_MODEL)
+    # Force CPU for the embedding model — ROCm PyTorch segfaults on gfx1151
+    # when loading sentence-transformers models on GPU (same issue as the
+    # reranker, see ADR-013). EMBED_DEVICE env var allows override.
+    embed_device = os.environ.get("EMBED_DEVICE", "cpu")
+    log.info("Loading embedding model: %s on %s", EMBED_MODEL, embed_device)
+    embedder = SentenceTransformer(EMBED_MODEL, device=embed_device)
 
     from docstore import create_docstore
     docstore = create_docstore()
