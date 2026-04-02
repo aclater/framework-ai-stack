@@ -1,6 +1,6 @@
-# llm-stack
+# framework-ai-stack
 
-Local LLM inference stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB unified memory). A single Qwen3.5-35B-A3B model routed through a LiteLLM proxy, all running as rootless Podman containers managed by systemd quadlets.
+Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB unified memory). Qwen3.5-35B-A3B inference routed through a LiteLLM proxy, plus a Google Drive RAG watcher that automatically imports and indexes documents into a RamaLama RAG image — all running as rootless Podman containers managed by systemd quadlets.
 
 ![Architecture](architecture.svg)
 
@@ -25,8 +25,8 @@ Models are pulled and managed by [RamaLama](https://github.com/containers/ramala
 ## First-time setup
 
 ```bash
-git clone https://github.com/aclater/llm-stack-final
-cd llm-stack-final
+git clone https://github.com/aclater/framework-ai-stack
+cd framework-ai-stack
 chmod +x llm-stack.sh
 
 ./llm-stack.sh deps          # install system packages (sudo)

@@ -1,6 +1,6 @@
-# llm-stack
+# framework-ai-stack
 
-Local inference stack on harrison.home.arpa (Ryzen AI Max+ 395, Fedora 43).
+Local AI stack on harrison.home.arpa (Ryzen AI Max+ 395, Fedora 43). LLM inference + Google Drive RAG watcher.
 
 ## Endpoints
 - LiteLLM proxy: http://localhost:4000 (key: sk-llm-stack-local)

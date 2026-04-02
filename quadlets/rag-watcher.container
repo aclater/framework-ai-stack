@@ -9,7 +9,7 @@ Wants=network-online.target
 [Container]
 Image=docker.io/library/python:3.12-slim
 
-Volume=%h/git/llm-stack-final/rag-watcher:/app:ro,Z
+Volume=%h/git/framework-ai-stack/rag-watcher:/app:ro,Z
 Volume=%h/.config/ramalama/gdrive-sa.json:/run/secrets/gdrive-sa.json:ro,Z
 Volume=ramalama-rag-staging:/staging:Z
 
