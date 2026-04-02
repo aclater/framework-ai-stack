@@ -67,7 +67,7 @@ Configured via environment variables in `~/.config/llm-stack/env`:
 
 ## RAG proxy configuration
 - `RERANKER_ENABLED` — true/false (default: true)
-- `RERANKER_MODEL` — cross-encoder model (default: BAAI/bge-reranker-v2-m3)
+- `RERANKER_MODEL` — cross-encoder model (default: cross-encoder/ms-marco-MiniLM-L-6-v2)
 - `RERANKER_TOP_N` — results after reranking (default: 5)
 - `RAG_TOP_K` — Qdrant candidates before reranking (default: 20)
 - `THINKING_BUDGET` — token budget for model reasoning (default: 1024)

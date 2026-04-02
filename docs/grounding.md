@@ -107,7 +107,7 @@ This is **not an error condition**. Empty retrievals are valuable signal for cor
 
 ## Reranker behavior
 
-The reranker (BAAI/bge-reranker-v2-m3) scores all Qdrant candidates and returns the top-N:
+The reranker (cross-encoder/ms-marco-MiniLM-L-6-v2) scores all Qdrant candidates and returns the top-N:
 
 - `RAG_TOP_K` (default 20) — candidates sent to Qdrant
 - `RERANKER_TOP_N` (default 5) — results after reranking

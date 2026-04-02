@@ -19,7 +19,7 @@ RAG proxy
   │  1. Embed the user's query
   │  2. Search Qdrant for top-K candidate vectors
   │  3. Batch-hydrate chunk text from the document store
-  │  4. Rerank with cross-encoder (BAAI/bge-reranker-v2-m3)
+  │  4. Rerank with cross-encoder (cross-encoder/ms-marco-MiniLM-L-6-v2)
   │  5. Format top-N chunks with [doc_id:chunk_id] labels
   │  6. Inject corpus-preferring system prompt + context
   │  7. Forward to model

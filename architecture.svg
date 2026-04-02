@@ -96,7 +96,7 @@
 <text class="th c-coral-text" x="210" y="210" text-anchor="middle" dominant-baseline="central">RAG proxy</text>
 <text class="ts c-coral-text" x="210" y="228" text-anchor="middle" dominant-baseline="central">1. Qdrant vector search (20 candidates)</text>
 <text class="ts c-coral-text" x="210" y="244" text-anchor="middle" dominant-baseline="central">2. Docstore hydration (batch text lookup)</text>
-<text class="ts c-coral-text" x="210" y="260" text-anchor="middle" dominant-baseline="central">3. Cross-encoder reranker → top 5</text>
+<text class="ts c-coral-text" x="210" y="260" text-anchor="middle" dominant-baseline="central">3. Cross-encoder reranker (MiniLM) → top 5</text>
 <text class="ts c-coral-text" x="210" y="276" text-anchor="middle" dominant-baseline="central">4. Grounding prompt + [doc_id:chunk_id] labels</text>
 <text class="ts c-coral-text" x="210" y="292" text-anchor="middle" dominant-baseline="central">5. Post-response: cite → validate → classify → audit</text>
 

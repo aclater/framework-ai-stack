@@ -175,9 +175,16 @@ If the model is still loading, wait — Qwen3.5-35B-A3B takes ~15 seconds to loa
 
 If Qdrant is empty, the watcher hasn't run yet. Force it: `systemctl --user restart rag-watcher`
 
-### Reranker cold start latency
+### Reranker model choice and latency
 
-The first request after a rag-proxy restart takes 30-40 seconds while the cross-encoder model downloads and loads. Subsequent requests are fast (~100ms for reranking). The health check has a 120-second startup grace period to accommodate this.
+The default reranker is `cross-encoder/ms-marco-MiniLM-L-6-v2` (22M params), which runs sub-second on CPU with 20 candidates. This was chosen after testing `BAAI/bge-reranker-v2-m3` (0.6B params), which:
+
+- Takes 60+ seconds per request on CPU (3s per candidate x 20)
+- Segfaults (exit 139) when loaded on GPU via ROCm PyTorch on gfx1151
+
+The MiniLM model trades some multilingual quality for ~100x speed. To swap back to bge-reranker-v2-m3, set `RERANKER_MODEL=BAAI/bge-reranker-v2-m3` — but only if GPU reranking becomes stable on gfx1151 or you accept 60s+ reranking latency.
+
+The first request after a rag-proxy restart takes 5-10 seconds while the model downloads. Subsequent requests are sub-second.
 
 ### SELinux denials
 
@@ -192,6 +199,10 @@ This is a Debian binary incompatibility with Fedora 43's SELinux policy, not a m
 ### IPv6 connection issues
 
 Some containers bind to `0.0.0.0` (IPv4 only). If `curl http://localhost:...` fails with "Connection reset by peer", try `http://127.0.0.1:...` instead.
+
+### Streaming responses not appearing in Open WebUI
+
+If queries show "thinking" but never produce visible output, check the rag-proxy logs for `RuntimeError: Cannot send a request, as the client has been closed`. This was a bug where the httpx AsyncClient was created in an `async with` block that closed before the streaming response was consumed. Fixed in commit `e8aa982` — ensure you're running the latest proxy code.
 
 ### High idle GPU usage
 
@@ -211,7 +222,7 @@ All configuration is via environment variables in `~/.config/llm-stack/env` and 
 | `EMBED_MODEL` | `sentence-transformers/all-mpnet-base-v2` | Embedding model |
 | `RAG_TOP_K` | `20` | Qdrant candidate count |
 | `RERANKER_ENABLED` | `true` | Enable/disable reranker |
-| `RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model |
+| `RERANKER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Cross-encoder model |
 | `RERANKER_TOP_N` | `5` | Results after reranking |
 | `RERANKER_DEVICE` | `cpu` | `cpu`, `cuda`, or auto-detect |
 | `THINKING_BUDGET` | `1024` | Token budget for model reasoning |
