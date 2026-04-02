@@ -201,12 +201,12 @@ def process_chat_request(body: dict) -> tuple[dict, dict]:
 
     body["messages"] = new_messages
 
-    # Add thinking budget to allow the model to reason across sources
-    # without unconstrained latency
-    if "chat_template_kwargs" not in body:
-        body["chat_template_kwargs"] = {}
-    body["chat_template_kwargs"]["enable_thinking"] = True
-    body["chat_template_kwargs"]["thinking_budget"] = THINKING_BUDGET
+    # Thinking budget — llama-server uses the --thinking flag at startup,
+    # not per-request chat_template_kwargs. The THINKING_BUDGET is passed
+    # as max_completion_tokens to bound thinking + response together.
+    # This prevents unconstrained thinking from consuming the full context.
+    if "max_tokens" not in body and "max_completion_tokens" not in body:
+        body["max_completion_tokens"] = THINKING_BUDGET + 2048
 
     return body, {
         "ranked": ranked,
