@@ -1,0 +1,4 @@
+[Volume]
+BindSource=/home/aclater/.local/share/llm-stack/rag-staging
+BindDest=/rag/staging
+BindOptions=private

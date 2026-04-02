@@ -6,20 +6,30 @@ Description=PostgreSQL for LiteLLM
 After=local-fs.target
 
 [Container]
-Image=docker.io/library/postgres:16-alpine
-
-Volume=litellm-db-data.volume:/var/lib/postgresql/data:Z
-
-Environment=POSTGRES_USER=litellm
-Environment=POSTGRES_PASSWORD=litellm
-Environment=POSTGRES_DB=litellm
-
-Network=host
-
-ContainerName=postgres
-
-[Service]
+Image=postgres:16
+Environment=POSTGRES_USER=llmstack
+Environment=POSTGRES_PASSWORD=llmstack
+Environment=POSTGRES_DB=llmstack
+Environment=PGDATA=/var/lib/postgresql/data/pgdata
+Environment=LC_COLLATE=C
+Environment=LC_CTYPE=C
+Environment=POSTGRES_INITDB_ARGS=--encoding=UTF-8 --locale=C
+Environment=LC_ALL=C
+Environment=POSTGRES_INITDB_WALLEVEL=minimal
+Environment=POSTGRES_MAX_CONNECTIONS=100
+Environment=POSTGRES_SHARED_BUFFERS=2GB
+Environment=POSTGRES_EFFECTIVE_CACHE_SIZE=4GB
+Environment=POSTGRES_WORK_MEM=64MB
+Environment=POSTGRES_MAINTENANCE_WORK_MEM=256MB
+Environment=POSTGRES_WAL_BUFFER=64MB
+Volume=litellm-db-data:/var/lib/postgresql/data
+Volume=type=tmpfs,target=/tmp,tmpmode=1777
 Restart=on-failure
+HealthCheckInterval=30s
+HealthCheckTimeout=10s
+HealthCheckStartPeriod=1m
+HealthCheckRetries=3
+HealthCheckCommand=pg_isready -U llmstack -d llmstack
 RestartSec=5s
 
 [Install]

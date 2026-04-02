@@ -268,7 +268,7 @@ cmd_pull_models() {
     local gguf_files
     gguf_files=$(find "$HOME/.local/share/ramalama/store" -name "*.gguf" -type f 2>/dev/null)
     if [[ -n "$gguf_files" ]]; then
-        echo "$gguf_files" | xargs chcon -t container_ro_file_t -l s0
+        echo "$gguf_files" | xargs chcon -t container_ro_file_t 2>/dev/null || true
         ok "SELinux labels set"
     fi
 

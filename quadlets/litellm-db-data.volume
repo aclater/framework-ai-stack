@@ -1,1 +1,4 @@
 [Volume]
+BindSource=/home/aclater/.local/share/llm-stack/litellm-db-data
+BindDest=/var/lib/postgresql/data
+BindOptions=private
