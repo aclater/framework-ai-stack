@@ -1,4 +1,1 @@
 [Volume]
-BindSource=/home/aclater/.local/share/llm-stack/open-webui-data
-BindDest=/app/data
-BindOptions=private
