@@ -9,7 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QUADLET_DIR="$HOME/.config/containers/systemd"
 CONFIG_DIR="$HOME/.config/llm-stack"
-UNITS=(postgres ramalama-reasoning litellm open-webui)
+UNITS=(postgres ramalama litellm open-webui)
 
 # Registry candidates for the ROCm image, in preference order
 ROCM_IMAGES=(
@@ -43,7 +43,7 @@ ${BOLD}First-time setup (run in order):${RESET}
   groups        add user to render/video groups       [needs sudo + reboot]
   setup         verify GPU, write configs
   pull-image    pull the RamaLama ROCm container image
-  pull-models   download model (~40 GB)
+  pull-models   download model (~22 GB)
   install       install quadlets to systemd
   up            start all services
 
@@ -68,7 +68,7 @@ ${BOLD}Teardown:${RESET}
 ${BOLD}Endpoints (once running):${RESET}
   LiteLLM proxy  →  http://localhost:4000
   Open WebUI     →  http://localhost:3000
-  DeepSeek-R1    →  http://localhost:8080
+  Qwen3.5-35B    →  http://localhost:8080
 
 EOF
 }
@@ -242,11 +242,11 @@ cmd_pull_image() {
 
     # Update image reference in source and installed quadlets
     log "Updating quadlets to use: $pulled"
-    for f in "$SCRIPT_DIR"/quadlets/ramalama-*.container; do
+    for f in "$SCRIPT_DIR"/quadlets/ramalama*.container; do
         sed -i "s|^Image=.*|Image=$pulled|" "$f"
         ok "Updated source: $(basename "$f")"
     done
-    for f in "$QUADLET_DIR"/ramalama-*.container; do
+    for f in "$QUADLET_DIR"/ramalama*.container; do
         [[ -f "$f" ]] || continue
         sed -i "s|^Image=.*|Image=$pulled|" "$f"
         ok "Updated installed: $(basename "$f")"
@@ -257,17 +257,13 @@ cmd_pull_image() {
 # ── Model pulling ─────────────────────────────────────────────────────────────
 
 cmd_pull_models() {
-    header "Pulling models via ramalama (~40 GB total)"
+    header "Pulling model via ramalama (~22 GB)"
 
-    log "DeepSeek-R1-70B Q4_K_M (~40 GB)..."
-    ramalama pull hf://bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf
+    log "Qwen3.5-35B-A3B UD-Q4_K_XL (~22 GB)..."
+    ramalama pull hf://unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf
     echo ""
 
-    log "Embed: nomic-embed-text (~300 MB)..."
-    ramalama pull ollama://nomic-embed-text
-    echo ""
-
-    header "All models pulled"
+    header "Model pulled"
     ramalama list
     echo ""
     ok "Next: ./llm-stack.sh install"
@@ -280,8 +276,8 @@ cmd_pull_models() {
 #   ~/.local/share/ramalama/store/<transport>/<org>/<repo>/<file>/snapshots/<sha>/<file>
 # This function finds the snapshot path for a given store subdirectory.
 _resolve_model_path() {
-    local store_subpath="$1"   # e.g. huggingface/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf
-    local filename="$2"        # e.g. DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf
+    local store_subpath="$1"   # e.g. huggingface/unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf
+    local filename="$2"        # e.g. Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf
     local store="$HOME/.local/share/ramalama/store"
     local snapdir="$store/$store_subpath/snapshots"
 
@@ -301,14 +297,14 @@ cmd_install() {
 
     # Map each quadlet to its store path and filename
     declare -A MODEL_STORE_PATH=(
-        [ramalama-reasoning]="huggingface/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf"
+        [ramalama]="huggingface/unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"
     )
     declare -A MODEL_FILENAME=(
-        [ramalama-reasoning]="DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf"
+        [ramalama]="Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"
     )
 
     local missing=()
-    for unit in ramalama-reasoning; do
+    for unit in ramalama; do
         local resolved
         resolved=$(_resolve_model_path "${MODEL_STORE_PATH[$unit]}" "${MODEL_FILENAME[$unit]}")
         if [[ -z "$resolved" ]]; then
@@ -338,7 +334,7 @@ cmd_install() {
     cp "$SCRIPT_DIR"/quadlets/*.container "$QUADLET_DIR"/
     cp "$SCRIPT_DIR"/quadlets/*.volume    "$QUADLET_DIR"/
 
-    for unit in ramalama-reasoning; do
+    for unit in ramalama; do
         local resolved
         resolved=$(_resolve_model_path "${MODEL_STORE_PATH[$unit]}" "${MODEL_FILENAME[$unit]}")
         local quadlet="$QUADLET_DIR/$unit.container"
@@ -350,7 +346,7 @@ cmd_install() {
     # Verify generator is happy
     local errors
     errors=$(/usr/lib/systemd/user-generators/podman-user-generator -dryrun -user 2>&1 \
-        | grep -iE "error|unsupported" || true)
+        | grep -ivE "^#" | grep -iE "error|unsupported" || true)
     if [[ -n "$errors" ]]; then
         warn "Quadlet generator reported issues:"
         echo "$errors" | sed 's/^/    /'
@@ -440,10 +436,10 @@ cmd_status() {
 cmd_logs() {
     local target="${1:-}"
     case "$target" in
-        model|reasoning) journalctl --user -u ramalama-reasoning -f ;;
-        proxy)           journalctl --user -u litellm -f ;;
-        webui)           journalctl --user -u open-webui -f ;;
-        *)               fail "Usage: ./llm-stack.sh logs <model|proxy|webui>" ;;
+        model)  journalctl --user -u ramalama -f ;;
+        proxy)  journalctl --user -u litellm -f ;;
+        webui)  journalctl --user -u open-webui -f ;;
+        *)      fail "Usage: ./llm-stack.sh logs <model|proxy|webui>" ;;
     esac
 }
 
@@ -457,8 +453,8 @@ cmd_swap() {
     log "Pulling $model..."
     ramalama pull "$model"
 
-    warn "Update the Mount= path in quadlets/ramalama-reasoning.container to match the new model path"
-    warn "Then run: ./llm-stack.sh install && systemctl --user restart ramalama-reasoning"
+    warn "Update the Mount= path in quadlets/ramalama.container to match the new model path"
+    warn "Then run: ./llm-stack.sh install && systemctl --user restart ramalama"
 }
 
 # ── Smoke tests ───────────────────────────────────────────────────────────────
@@ -470,12 +466,12 @@ cmd_test() {
 
     header "Smoke testing inference"
 
-    log "Testing default model (DeepSeek-R1-70B on :8080)..."
+    log "Testing default model (Qwen3.5-35B-A3B on :8080)..."
     local resp
     if resp=$(curl -sf --max-time 90 "$api/chat/completions" \
         -H "Authorization: Bearer $key" \
         -H "Content-Type: application/json" \
-        -d '{"model":"default","messages":[{"role":"user","content":"Reply with exactly one word: ready"}],"max_tokens":5}' \
+        -d '{"model":"default","messages":[{"role":"user","content":"Reply with exactly one word: ready"}],"max_tokens":512}' \
         2>/dev/null); then
         local content
         content=$(echo "$resp" | python3 -c \

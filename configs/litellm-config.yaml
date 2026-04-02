@@ -1,33 +1,40 @@
-# LiteLLM config — single DeepSeek-R1-70B model on :8080
+# LiteLLM config — single Qwen3.5-35B-A3B model on :8080
 # All aliases route to the same backend
 
 model_list:
 
   - model_name: default
     litellm_params:
-      model: openai/default
+      model: openai/qwen3.5
       api_base: http://localhost:8080/v1
       api_key: none
       timeout: 300
 
   - model_name: reasoning
     litellm_params:
-      model: openai/reasoning
+      model: openai/qwen3.5
       api_base: http://localhost:8080/v1
       api_key: none
       timeout: 300
 
   - model_name: code
     litellm_params:
-      model: openai/code
+      model: openai/qwen3.5
       api_base: http://localhost:8080/v1
       api_key: none
       timeout: 300
 
+  - model_name: fast
+    litellm_params:
+      model: openai/qwen3.5
+      api_base: http://localhost:8080/v1
+      api_key: none
+      timeout: 60
+
   # ── AIMI stub — uncomment when Red Hat image available ───────────────────
   # - model_name: aimi-guarded
   #   litellm_params:
-  #     model: openai/reasoning
+  #     model: openai/qwen3.5
   #     api_base: http://localhost:8090/v1   # AIMI guardrail proxy endpoint
   #     api_key: none
   #     timeout: 300

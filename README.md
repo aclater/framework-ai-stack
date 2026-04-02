@@ -1,6 +1,6 @@
 # llm-stack
 
-Local LLM inference stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB unified memory). A single DeepSeek-R1-70B model routed through a LiteLLM proxy, all running as rootless Podman containers managed by systemd quadlets.
+Local LLM inference stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB unified memory). A single Qwen3.5-35B-A3B model routed through a LiteLLM proxy, all running as rootless Podman containers managed by systemd quadlets.
 
 ![Architecture](architecture.svg)
 
@@ -10,7 +10,7 @@ Local LLM inference stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 
 |---|---|---|---|
 | postgres | `postgres:16-alpine` | 5432 | Backing store for LiteLLM |
 | litellm | `ghcr.io/berriai/litellm:main-stable` | 4000 | OpenAI-compatible proxy (v1.82.3-stable.patch.2) |
-| ramalama-reasoning | `quay.io/ramalama/rocm:latest` | 8080 | DeepSeek-R1-70B Q4\_K\_M (40 GB) |
+| ramalama | `quay.io/ramalama/rocm:latest` | 8080 | Qwen3.5-35B-A3B UD-Q4\_K\_XL (~22 GB) |
 | open-webui | `ghcr.io/open-webui/open-webui:v0.8.6` | 3000 | Chat UI, pinned to v0.8.6 |
 
 Models are pulled and managed by [RamaLama](https://github.com/containers/ramalama). LiteLLM provides a single OpenAI-compatible endpoint at `:4000` that routes all aliases to the same model.
@@ -19,8 +19,8 @@ Models are pulled and managed by [RamaLama](https://github.com/containers/ramala
 
 - Fedora 43
 - AMD Ryzen AI Max+ 395 (gfx1151) or similar AMD iGPU/dGPU with ROCm support
-- ~45 GB free disk space for the model
-- **BIOS: UMA frame buffer set to 64 GB — model uses ~40 GB VRAM, leaving ~55 GB free system RAM for KV cache and applications**
+- ~25 GB free disk space for the model
+- **BIOS: UMA frame buffer set to 64 GB — model uses ~22 GB VRAM, leaving ~42 GB VRAM headroom for KV cache and ~55 GB free system RAM**
 
 ## First-time setup
 
@@ -33,7 +33,7 @@ chmod +x llm-stack.sh
 ./llm-stack.sh groups        # add user to render/video (sudo + reboot)
 ./llm-stack.sh setup         # verify GPU, write configs
 ./llm-stack.sh pull-image    # pull the RamaLama ROCm container image
-./llm-stack.sh pull-models   # download model (~40 GB)
+./llm-stack.sh pull-models   # download model (~22 GB)
 ./llm-stack.sh install       # install quadlets to systemd + fix SELinux labels
 ./llm-stack.sh up            # start everything
 ```
@@ -68,13 +68,14 @@ export OPENAI_API_BASE=http://localhost:4000
 export OPENAI_API_KEY=sk-llm-stack-local
 ```
 
-Available model aliases (all route to DeepSeek-R1-70B on :8080):
+Available model aliases (all route to Qwen3.5-35B-A3B on :8080):
 
 | Alias | Use case |
 |---|---|
 | `default` | General use |
 | `reasoning` | Multi-step problems, chain-of-thought |
 | `code` | Completion, debugging, generation |
+| `fast` | Quick queries, drafting |
 
 ## Hardware notes
 
@@ -82,7 +83,7 @@ Available model aliases (all route to DeepSeek-R1-70B on :8080):
 
 **Unified memory:** `LLAMA_HIP_UMA=1` is set in the inference container, which tells llama.cpp to treat the 128 GB unified pool as one flat allocation space rather than staging copies between system RAM and "VRAM."
 
-**Memory budget:** DeepSeek-R1-70B Q4\_K\_M uses ~40 GB. With a 64/64 BIOS split, this leaves ~24 GB of VRAM headroom for KV cache (65536 context, parallel 4) and ~55 GB of free system RAM for applications.
+**Memory budget:** Qwen3.5-35B-A3B UD-Q4\_K\_XL uses ~22 GB. With a 64/64 BIOS split, this leaves ~42 GB of VRAM headroom for KV cache (65536 context, parallel 4) and ~55 GB of free system RAM for applications.
 
 **SELinux:** The ramalama quadlet requires `SecurityLabelDisable=true` because SELinux blocks `/dev/kfd` access in the user systemd context. `cmd_install` automatically runs `chcon -t container_ro_file_t -l s0` on all `.gguf` model files.
 
@@ -92,7 +93,7 @@ Available model aliases (all route to DeepSeek-R1-70B on :8080):
 
 **LiteLLM** uses `main-stable` (currently v1.82.3-stable.patch.2), backed by postgres:16-alpine. It is not pinned to a specific version tag.
 
-**Open WebUI** is pinned to v0.8.6. It uses `DATABASE_URL=sqlite:////app/backend/data/webui.db` (not the postgres instance — that's for LiteLLM). It runs on port 3000 via `PORT=3000` because `Network=host` would otherwise conflict with ramalama-reasoning on :8080.
+**Open WebUI** is pinned to v0.8.6. It uses `DATABASE_URL=sqlite:////app/backend/data/webui.db` (not the postgres instance — that's for LiteLLM). It runs on port 3000 via `PORT=3000` because `Network=host` would otherwise conflict with ramalama on :8080.
 
 **Environment variables:** `OPENAI_API_KEY` and all shared secrets live in `env.example` / `~/.config/llm-stack/env`. Systemd does not expand `EnvironmentFile` vars inside `Environment=` lines, so all vars that need cross-referencing must be set directly in the env file.
 

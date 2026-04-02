@@ -117,7 +117,6 @@ assert_exit_nonzero "unknown command exits non-zero" bash "$SCRIPT" definitely-n
 
 section "2. Registry check logic"
 
-# Test HTTP status parsing directly
 _test_status() {
     local status="$1" expected="$2"
     local result
@@ -133,7 +132,7 @@ _test_status "200"    "up"
 _test_status "401"    "up"
 _test_status "502"    "down"
 _test_status "000"    "down"
-_test_status "401000" "down"   # the old bug — concatenated exit code
+_test_status "401000" "down"
 _test_status "404"    "down"
 
 # ── 3. Config file generation ─────────────────────────────────────────────────
@@ -143,22 +142,18 @@ section "3. Config file generation"
 CONFIG_DIR="$TEST_HOME/.config/llm-stack"
 QUADLET_DIR="$TEST_HOME/.config/containers/systemd"
 
-# Stub out commands that require real system access
 PATH_BAK="$PATH"
 STUB_DIR="$(mktemp -d)"
 trap 'rm -rf "$TEST_HOME" "$STUB_DIR"; export HOME="$ORIG_HOME"; export PATH="$PATH_BAK"' EXIT
 
-# Create stubs for podman, ramalama, rocminfo, systemctl, loginctl, sudo
 for cmd in podman ramalama rocminfo sudo loginctl; do
     cat > "$STUB_DIR/$cmd" << STUB
 #!/usr/bin/env bash
-# stub: $cmd — always succeeds silently
 exit 0
 STUB
     chmod +x "$STUB_DIR/$cmd"
 done
 
-# systemctl stub — returns "active" for is-active, otherwise succeeds
 cat > "$STUB_DIR/systemctl" << 'STUB'
 #!/usr/bin/env bash
 if [[ "${*}" == *"is-active"* ]]; then echo "active"; fi
@@ -166,7 +161,6 @@ exit 0
 STUB
 chmod +x "$STUB_DIR/systemctl"
 
-# ramalama info stub — returns JSON with hip accelerator
 cat > "$STUB_DIR/ramalama" << 'STUB'
 #!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
@@ -178,7 +172,6 @@ exit 0
 STUB
 chmod +x "$STUB_DIR/ramalama"
 
-# rocminfo stub — returns gfx1151
 cat > "$STUB_DIR/rocminfo" << 'STUB'
 #!/usr/bin/env bash
 echo "  Name:                    gfx1151"
@@ -186,12 +179,10 @@ exit 0
 STUB
 chmod +x "$STUB_DIR/rocminfo"
 
-# Fake /etc/group with render and video containing the current user
 FAKE_GROUP="$(mktemp)"
 echo "render:x:105:$(whoami)" >> "$FAKE_GROUP"
 echo "video:x:39:$(whoami)"   >> "$FAKE_GROUP"
 
-# Patch the script: fake /etc/group, remove root check, fix SCRIPT_DIR, stub PATH
 PATCHED="$(mktemp --suffix=.sh)"
 sed \
     -e "s|/etc/group|$FAKE_GROUP|g" \
@@ -201,7 +192,6 @@ sed \
 chmod +x "$PATCHED"
 export PATH="$STUB_DIR:$PATH_BAK"
 
-# Run setup with faked environment — override device checks
 SETUP_OUT=$(HOME="$TEST_HOME" bash "$PATCHED" setup 2>&1 || true)
 
 assert_contains "setup creates config dir"   "$CONFIG_DIR"          "$SETUP_OUT"
@@ -212,7 +202,6 @@ assert_contains "setup adds HSA var"         "HSA_OVERRIDE_GFX_VERSION" "$SETUP_
 assert_file_contains "bashrc gets HSA var"   "$TEST_HOME/.bashrc"   "HSA_OVERRIDE_GFX_VERSION=11.5.1"
 assert_file_contains "bashrc gets UMA var"   "$TEST_HOME/.bashrc"   "LLAMA_HIP_UMA=1"
 
-# Setup should not duplicate vars on second run
 HOME="$TEST_HOME" bash "$PATCHED" setup &>/dev/null || true
 BASHRC_COUNT=$(grep -c "HSA_OVERRIDE_GFX_VERSION" "$TEST_HOME/.bashrc" || echo 0)
 assert_eq "bashrc var not duplicated on re-run" "1" "$BASHRC_COUNT"
@@ -223,58 +212,44 @@ section "4. Quadlet files"
 
 QUADLET_SRC="$REPO_DIR/quadlets"
 
-assert_file_exists     "ramalama-reasoning.container" "$QUADLET_SRC/ramalama-reasoning.container"
-assert_file_not_exists "ramalama-code.container removed"  "$QUADLET_SRC/ramalama-code.container"
-assert_file_not_exists "ramalama-fast.container removed"  "$QUADLET_SRC/ramalama-fast.container"
-assert_file_exists     "litellm.container"            "$QUADLET_SRC/litellm.container"
-assert_file_exists     "open-webui.container"         "$QUADLET_SRC/open-webui.container"
-assert_file_exists     "litellm-db-data.volume"       "$QUADLET_SRC/litellm-db-data.volume"
-assert_file_exists     "open-webui-data.volume"       "$QUADLET_SRC/open-webui-data.volume"
+assert_file_exists     "ramalama.container"               "$QUADLET_SRC/ramalama.container"
+assert_file_not_exists "ramalama-reasoning.container gone" "$QUADLET_SRC/ramalama-reasoning.container"
+assert_file_not_exists "ramalama-code.container gone"      "$QUADLET_SRC/ramalama-code.container"
+assert_file_not_exists "ramalama-fast.container gone"      "$QUADLET_SRC/ramalama-fast.container"
+assert_file_exists     "litellm.container"                 "$QUADLET_SRC/litellm.container"
+assert_file_exists     "open-webui.container"              "$QUADLET_SRC/open-webui.container"
+assert_file_exists     "litellm-db-data.volume"            "$QUADLET_SRC/litellm-db-data.volume"
+assert_file_exists     "open-webui-data.volume"            "$QUADLET_SRC/open-webui-data.volume"
 
-# No PullPolicy — not supported in this podman-quadlet version
-for f in "$QUADLET_SRC"/ramalama-*.container; do
-    assert_not_contains "$(basename $f) has no PullPolicy" \
-        "PullPolicy" "$(cat $f)"
-done
+# No PullPolicy
+assert_not_contains "ramalama.container has no PullPolicy" \
+    "PullPolicy" "$(cat $QUADLET_SRC/ramalama.container)"
 
-# Image line must exist in ramalama quadlets
-for f in "$QUADLET_SRC"/ramalama-*.container; do
-    name=$(basename $f)
-    assert_contains "$name has Image= line" "^Image=" "$(grep "^Image=" $f || true)"
-done
+# Image line must exist
+assert_contains "ramalama.container has Image= line" "^Image=" \
+    "$(grep "^Image=" $QUADLET_SRC/ramalama.container || true)"
 
 # litellm checks
 assert_contains "litellm uses main-stable image"    "main-stable"          "$(cat $QUADLET_SRC/litellm.container)"
 assert_not_contains "litellm has no bad env interpolation" 'LITELLM_MASTER_KEY=${' "$(cat $QUADLET_SRC/litellm.container)"
 assert_contains "litellm loads env file"           "EnvironmentFile"      "$(cat $QUADLET_SRC/litellm.container)"
-
-# litellm must have DATABASE_URL
 assert_contains "litellm has postgres DATABASE_URL" \
     "DATABASE_URL=postgresql" "$(cat $QUADLET_SRC/litellm.container)"
 
-# Reasoning container publishes 8080
-assert_contains "reasoning publishes 8080" "8080" "$(cat $QUADLET_SRC/ramalama-reasoning.container)"
+# ramalama container checks
+assert_contains "ramalama publishes 8080" "8080" "$(cat $QUADLET_SRC/ramalama.container)"
+assert_contains "ramalama has /dev/kfd" "/dev/kfd" "$(cat $QUADLET_SRC/ramalama.container)"
+assert_contains "ramalama has /dev/dri" "/dev/dri" "$(cat $QUADLET_SRC/ramalama.container)"
+assert_contains "ramalama has LLAMA_HIP_UMA"          "LLAMA_HIP_UMA=1"            "$(cat $QUADLET_SRC/ramalama.container)"
+assert_contains "ramalama has HSA_OVERRIDE_GFX_VERSION" "HSA_OVERRIDE_GFX_VERSION" "$(cat $QUADLET_SRC/ramalama.container)"
+assert_contains "ramalama mount placeholder present" "MODEL_PATH_PLACEHOLDER" "$(cat $QUADLET_SRC/ramalama.container)"
+assert_contains "ramalama mounts to /mnt/models"    "/mnt/models/model.file" "$(cat $QUADLET_SRC/ramalama.container)"
 
-# GPU device passthrough present in ramalama container
-for f in "$QUADLET_SRC"/ramalama-*.container; do
-    assert_contains "$(basename $f) has /dev/kfd" "/dev/kfd" "$(cat $f)"
-    assert_contains "$(basename $f) has /dev/dri" "/dev/dri" "$(cat $f)"
-done
-
-# ROCm env vars present
-for f in "$QUADLET_SRC"/ramalama-*.container; do
-    assert_contains "$(basename $f) has LLAMA_HIP_UMA"          "LLAMA_HIP_UMA=1"            "$(cat $f)"
-    assert_contains "$(basename $f) has HSA_OVERRIDE_GFX_VERSION" "HSA_OVERRIDE_GFX_VERSION" "$(cat $f)"
-done
-
-# Mount line uses placeholder — resolved at install time from ramalama store
-assert_contains "reasoning mount placeholder present" "MODEL_PATH_PLACEHOLDER" "$(cat $QUADLET_SRC/ramalama-reasoning.container)"
-assert_contains "reasoning mounts to /mnt/models"    "/mnt/models/model.file" "$(cat $QUADLET_SRC/ramalama-reasoning.container)"
-
-# DeepSeek-R1 specific checks
-assert_contains "reasoning description is DeepSeek-R1" "DeepSeek-R1-70B" "$(cat $QUADLET_SRC/ramalama-reasoning.container)"
-assert_contains "reasoning has ctx-size 65536" "65536" "$(cat $QUADLET_SRC/ramalama-reasoning.container)"
-assert_contains "reasoning has parallel 4" "parallel 4" "$(cat $QUADLET_SRC/ramalama-reasoning.container)"
+# Qwen3.5 specific checks
+assert_contains "ramalama description is Qwen3.5" "Qwen3.5-35B-A3B" "$(cat $QUADLET_SRC/ramalama.container)"
+assert_contains "ramalama has ctx-size 65536" "65536" "$(cat $QUADLET_SRC/ramalama.container)"
+assert_contains "ramalama has parallel 4" "parallel 4" "$(cat $QUADLET_SRC/ramalama.container)"
+assert_contains "ramalama has --jinja" "jinja" "$(cat $QUADLET_SRC/ramalama.container)"
 
 # ── 5. LiteLLM config ────────────────────────────────────────────────────────
 
@@ -283,21 +258,18 @@ section "5. LiteLLM config"
 LITELLM_CFG="$REPO_DIR/configs/litellm-config.yaml"
 assert_file_exists "litellm-config.yaml exists" "$LITELLM_CFG"
 
-for alias in default reasoning code; do
+for alias in default reasoning code fast; do
     assert_contains "config has '$alias' alias" "model_name: $alias" "$(cat $LITELLM_CFG)"
 done
 
-# All aliases route to :8080
-assert_contains "default routes to :8080" "8080" "$(cat $LITELLM_CFG)"
+assert_contains "all aliases route to :8080" "8080" "$(cat $LITELLM_CFG)"
 assert_not_contains "no :8081 references" "8081" "$(cat $LITELLM_CFG)"
 assert_not_contains "no :8082 references" "8082" "$(cat $LITELLM_CFG)"
 assert_not_contains "no embed alias" "model_name: embed" "$(cat $LITELLM_CFG)"
-assert_not_contains "no fast alias" "model_name: fast" "$(cat $LITELLM_CFG)"
 assert_not_contains "no DATABASE_URL in config" "DATABASE_URL" "$(cat $LITELLM_CFG)"
 assert_contains "drop_params enabled" "drop_params: true" "$(cat $LITELLM_CFG)"
 assert_contains "master key set" "LITELLM_MASTER_KEY" "$(cat $LITELLM_CFG)"
 
-# Validate YAML is parseable
 if command -v python3 &>/dev/null; then
     YAML_OK=$(python3 -c "import sys;
 try:
@@ -338,7 +310,6 @@ assert_contains "SVG mentions ROCm"           "ROCm"          "$(cat $SVG)"
 assert_contains "SVG mentions port 8080"      "8080"          "$(cat $SVG)"
 assert_contains "SVG has dark mode styles"    "prefers-color-scheme" "$(cat $SVG)"
 
-# Validate it's well-formed XML
 if command -v python3 &>/dev/null; then
     XML_OK=$(python3 -c "
 import xml.etree.ElementTree as ET
@@ -355,39 +326,36 @@ section "8. Model URLs in script"
 
 SCRIPT_CONTENT=$(cat "$SCRIPT")
 
-assert_contains     "DeepSeek-R1 URL present"       "bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf" "$SCRIPT_CONTENT"
-assert_not_contains "QwQ-32B URL removed"            "QwQ-32B-GGUF"                                       "$SCRIPT_CONTENT"
-assert_not_contains "Qwen-Coder-32B URL removed"     "Qwen2.5-Coder-32B-Instruct-GGUF"                    "$SCRIPT_CONTENT"
-assert_not_contains "14B URL removed"                 "Qwen2.5-14B-Instruct-GGUF"                          "$SCRIPT_CONTENT"
-assert_contains     "nomic-embed-text present"        "ollama://nomic-embed-text"                          "$SCRIPT_CONTENT"
+assert_contains     "Qwen3.5 URL present"            "unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf" "$SCRIPT_CONTENT"
+assert_not_contains "QwQ-32B URL removed"             "QwQ-32B-GGUF"                    "$SCRIPT_CONTENT"
+assert_not_contains "Qwen-Coder-32B URL removed"      "Qwen2.5-Coder-32B"               "$SCRIPT_CONTENT"
+assert_not_contains "Qwen2.5-14B URL removed"         "Qwen2.5-14B"                     "$SCRIPT_CONTENT"
+assert_not_contains "DeepSeek-R1 URL removed"         "DeepSeek-R1"                     "$SCRIPT_CONTENT"
+assert_not_contains "nomic-embed-text removed"         "nomic-embed-text"                "$SCRIPT_CONTENT"
 
 # ── 10. Model path resolver ───────────────────────────────────────────────────
 
 section "10. Model path resolver"
 
-# Source just the resolver function from the script using awk to extract it cleanly
 source <(awk '/^_resolve_model_path\(\)/,/^}/' "$SCRIPT")
 
-# Create a fake ramalama store structure
 FAKE_STORE="$(mktemp -d)"
 SHA="sha256-abc123def456"
-mkdir -p "$FAKE_STORE/huggingface/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf/snapshots/$SHA"
-touch "$FAKE_STORE/huggingface/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf/snapshots/$SHA/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf"
+mkdir -p "$FAKE_STORE/huggingface/unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf/snapshots/$SHA"
+touch "$FAKE_STORE/huggingface/unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf/snapshots/$SHA/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"
 
-# Override HOME to point at our fake store
 RESOLVER_HOME="$(mktemp -d)"
 mkdir -p "$RESOLVER_HOME/.local/share/ramalama"
 ln -s "$FAKE_STORE" "$RESOLVER_HOME/.local/share/ramalama/store"
 
 RESOLVED=$(HOME="$RESOLVER_HOME" _resolve_model_path \
-    "huggingface/bartowski/DeepSeek-R1-Distill-Llama-70B-GGUF/DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf" \
-    "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf")
+    "huggingface/unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf" \
+    "Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf")
 
-assert_contains "resolver finds model under snapshots"  "snapshots"              "$RESOLVED"
-assert_contains "resolver finds correct filename"       "DeepSeek-R1-Distill-Llama-70B-Q4_K_M.gguf" "$RESOLVED"
-assert_contains "resolver returns absolute path"        "$RESOLVER_HOME"         "$RESOLVED"
+assert_contains "resolver finds model under snapshots"  "snapshots"                       "$RESOLVED"
+assert_contains "resolver finds correct filename"       "Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf" "$RESOLVED"
+assert_contains "resolver returns absolute path"        "$RESOLVER_HOME"                  "$RESOLVED"
 
-# Missing model returns empty string (not an error)
 MISSING=$(HOME="$RESOLVER_HOME" _resolve_model_path \
     "huggingface/SomeOrg/nonexistent-model" \
     "nonexistent.gguf" || true)
