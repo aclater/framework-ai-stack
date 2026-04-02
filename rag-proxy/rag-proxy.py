@@ -26,8 +26,11 @@ MODEL_URL = os.environ.get("MODEL_URL", "http://127.0.0.1:8080")
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://127.0.0.1:6333")
 COLLECTION_NAME = os.environ.get("QDRANT_COLLECTION", "documents")
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "sentence-transformers/all-mpnet-base-v2")
-TOP_K = int(os.environ.get("RAG_TOP_K", "10"))
+TOP_K = int(os.environ.get("RAG_TOP_K", "20"))
 PROXY_PORT = int(os.environ.get("RAG_PROXY_PORT", "8090"))
+
+# Reranker (imported lazily to avoid loading model at module level)
+from reranker import rerank
 
 # Globals initialized at startup
 qdrant: QdrantClient = None
@@ -59,12 +62,12 @@ def startup():
     log.info("RAG proxy ready — forwarding to %s", MODEL_URL)
 
 
-def search_context(query: str) -> str:
-    """Embed the query and search Qdrant for relevant document chunks."""
+def search_qdrant(query: str) -> list[dict]:
+    """Embed the query and search Qdrant for candidate document chunks."""
     try:
         collections = [c.name for c in qdrant.get_collections().collections]
         if COLLECTION_NAME not in collections:
-            return ""
+            return []
 
         query_vector = embedder.encode(query).tolist()
         results = qdrant.query_points(
@@ -75,19 +78,29 @@ def search_context(query: str) -> str:
         )
 
         if not results.points:
-            return ""
+            return []
 
-        chunks = []
-        for point in results.points:
-            text = point.payload.get("text", "")
-            source = point.payload.get("source", "unknown")
-            if text:
-                chunks.append(f"[Source: {source}]\n{text}")
-
-        return "\n\n".join(chunks)
+        return [point.payload for point in results.points if point.payload.get("text")]
     except Exception:
         log.exception("Qdrant search failed")
+        return []
+
+
+def search_context(query: str) -> str:
+    """Search Qdrant, rerank, and format as context string for the LLM."""
+    candidates = search_qdrant(query)
+    if not candidates:
         return ""
+
+    ranked = rerank(query, candidates)
+
+    chunks = []
+    for r in ranked:
+        source = r.get("source", "unknown")
+        text = r.get("text", "")
+        chunks.append(f"[Source: {source}]\n{text}")
+
+    return "\n\n".join(chunks)
 
 
 def inject_context(body: dict) -> dict:
