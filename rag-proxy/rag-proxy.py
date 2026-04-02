@@ -291,11 +291,14 @@ async def chat_completions(request: Request):
 
     stream = body.get("stream", False)
 
-    async with httpx.AsyncClient(timeout=300) as client:
-        if stream:
-            # Streaming responses can't be post-processed for citations
-            # because we don't have the full text. Pass through as-is.
-            async def stream_response():
+    if stream:
+        # Streaming responses can't be post-processed for citations
+        # because we don't have the full text. Pass through as-is.
+        # The client must be created inside the generator so it stays
+        # alive for the duration of the stream — creating it in an
+        # outer async-with closes it before the stream is consumed.
+        async def stream_response():
+            async with httpx.AsyncClient(timeout=300) as client:
                 async with client.stream(
                     "POST",
                     f"{MODEL_URL}/v1/chat/completions",
@@ -305,16 +308,17 @@ async def chat_completions(request: Request):
                     async for chunk in resp.aiter_bytes():
                         yield chunk
 
-            return StreamingResponse(stream_response(), media_type="text/event-stream")
-        else:
+        return StreamingResponse(stream_response(), media_type="text/event-stream")
+    else:
+        async with httpx.AsyncClient(timeout=300) as client:
             resp = await client.post(
                 f"{MODEL_URL}/v1/chat/completions",
                 json=body,
             )
-            response_data = resp.json()
-            # Post-process: validate citations, classify grounding, audit
-            response_data = process_response(response_data, retrieval_ctx)
-            return JSONResponse(content=response_data)
+        response_data = resp.json()
+        # Post-process: validate citations, classify grounding, audit
+        response_data = process_response(response_data, retrieval_ctx)
+        return JSONResponse(content=response_data)
 
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
