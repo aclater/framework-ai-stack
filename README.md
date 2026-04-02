@@ -97,9 +97,20 @@ Available model aliases (all route to Qwen3.5-35B-A3B on :8080):
 
 | ADR | Decision |
 |-----|----------|
-| [004](docs/adr/004-ubi-container-strategy.md) | UBI container base images with SELinux enforcing |
+| [005](docs/adr/005-podman-quadlets-over-docker-compose.md) | Rootless Podman quadlets over docker-compose |
 | [006](docs/adr/006-llamacpp-rocm-over-vllm.md) | llama.cpp/ROCm as inference backend over vLLM |
+| [004](docs/adr/004-ubi-container-strategy.md) | UBI container base images with SELinux enforcing |
 | [010](docs/adr/010-uma-memory-configuration.md) | Unified memory configuration — remove LLAMA\_HIP\_UMA=1 |
+| [011](docs/adr/011-selinux-securitylabeldisable-workaround.md) | SecurityLabelDisable=true as targeted workaround |
+
+**Model and proxy**
+
+| ADR | Decision |
+|-----|----------|
+| [012](docs/adr/012-model-selection-qwen35-35b-a3b.md) | Qwen3.5-35B-A3B as primary inference model |
+| [007](docs/adr/007-single-model-tier.md) | Single model tier replacing three specialized tiers |
+| [008](docs/adr/008-litellm-postgres-retained.md) | Retain LiteLLM proxy with PostgreSQL backend |
+| [009](docs/adr/009-litellm-supply-chain-pin.md) | Pin LiteLLM to main-stable after supply chain incident |
 
 **RAG pipeline**
 
