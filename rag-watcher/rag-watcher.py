@@ -403,12 +403,25 @@ def get_qdrant_client():
     return QdrantClient(url=url, timeout=30)
 
 
-def get_embedder():
-    from sentence_transformers import SentenceTransformer
-    model_name = os.environ.get("EMBED_MODEL", "sentence-transformers/all-mpnet-base-v2")
-    device = os.environ.get("EMBED_DEVICE", "cpu")
-    log.info("Loading embedding model: %s on %s", model_name, device)
-    return SentenceTransformer(model_name, device=device)
+def embed_texts(texts: list[str], batch_size: int = 64) -> list[list[float]]:
+    """Embed texts via rag-proxy's /v1/embeddings endpoint.
+
+    Delegates to rag-proxy instead of loading a local model — saves ~1-2 GB RAM.
+    Batches requests to avoid oversized payloads.
+    """
+    import requests
+
+    embed_url = os.environ.get("EMBED_URL", "http://127.0.0.1:8090/v1/embeddings")
+    vectors = []
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i + batch_size]
+        resp = requests.post(embed_url, json={"input": batch}, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()["data"]
+        # Sort by index to preserve order
+        data.sort(key=lambda x: x["index"])
+        vectors.extend([d["embedding"] for d in data])
+    return vectors
 
 
 def ensure_collection(qdrant, collection_name: str, vector_size: int):
@@ -492,16 +505,11 @@ def ingest_docs(docs: list[dict]) -> bool:
     docstore.upsert_chunks(all_chunks)
     log.info("Persisted %d chunks to docstore", len(all_chunks))
 
-    # Step 2: Embed chunk texts in batches to avoid OOM on large sets
+    # Step 2: Embed chunk texts via rag-proxy (no local model needed)
     embed_batch_size = int(os.environ.get("EMBED_BATCH_SIZE", "64"))
-    log.info("Embedding %d chunks (batch_size=%d)...", len(all_chunks), embed_batch_size)
-    embedder = get_embedder()
+    log.info("Embedding %d chunks via rag-proxy (batch_size=%d)...", len(all_chunks), embed_batch_size)
     texts = [c["text"] for c in all_chunks]
-    vectors = []
-    for i in range(0, len(texts), embed_batch_size):
-        batch = texts[i:i + embed_batch_size]
-        batch_vecs = embedder.encode(batch, show_progress_bar=False).tolist()
-        vectors.extend(batch_vecs)
+    vectors = embed_texts(texts, batch_size=embed_batch_size)
 
     # Step 3: Upsert reference-only payloads to Qdrant
     qdrant = get_qdrant_client()

@@ -219,13 +219,11 @@ All configuration is via environment variables in `~/.config/llm-stack/env` and 
 | `MODEL_URL` | `http://127.0.0.1:8080` | Model endpoint |
 | `QDRANT_URL` | `http://127.0.0.1:6333` | Qdrant endpoint |
 | `QDRANT_COLLECTION` | `documents` | Collection name |
-| `EMBED_MODEL` | `sentence-transformers/all-mpnet-base-v2` | Embedding model |
-| `EMBED_DEVICE` | `cpu` | `cpu` or `cuda` — CPU required on gfx1151 (see ADR-013) |
+| `EMBED_MODEL` | `BAAI/bge-base-en-v1.5` | Embedding model (fastembed/ONNX) |
 | `RAG_TOP_K` | `20` | Qdrant candidate count |
 | `RERANKER_ENABLED` | `true` | Enable/disable reranker |
-| `RERANKER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Cross-encoder model |
+| `RERANKER_MODEL` | `Xenova/ms-marco-MiniLM-L-6-v2` | Cross-encoder model (fastembed/ONNX) |
 | `RERANKER_TOP_N` | `5` | Results after reranking |
-| `RERANKER_DEVICE` | `cpu` | `cpu`, `cuda`, or auto-detect |
 | `THINKING_BUDGET` | `1024` | Token budget for model reasoning |
 | `EMBED_CACHE_SIZE` | `256` | LRU cache size for query embeddings |
 | `DOCSTORE_BACKEND` | `postgres` | `postgres` or `sqlite` |
@@ -241,4 +239,4 @@ All configuration is via environment variables in `~/.config/llm-stack/env` and 
 | `WATCH_INTERVAL_MINUTES` | `15` | Poll interval |
 | `CHUNK_SIZE` | `1024` | Max chunk size (characters) |
 | `CHUNK_OVERLAP` | `128` | Overlap between chunks |
-| `EMBED_MODEL` | `sentence-transformers/all-mpnet-base-v2` | Must match proxy |
+| `EMBED_URL` | `http://127.0.0.1:8090/v1/embeddings` | Embedding endpoint (delegates to rag-proxy) |

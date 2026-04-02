@@ -43,7 +43,7 @@ RAG watcher (polls every 15 minutes)
   │  2. Extract text (PDF, DOCX, PPTX, XLSX, HTML, Markdown)
   │  3. Chunk with RecursiveCharacterTextSplitter
   │  4. Persist chunks to document store (Postgres)
-  │  5. Embed with sentence-transformers/all-mpnet-base-v2 (CPU-only)
+  │  5. Embed with BAAI/bge-base-en-v1.5 (fastembed/ONNX, CPU-only)
   │  6. Upsert reference-only payloads to Qdrant
   ▼
 Qdrant (vectors) + Postgres (chunk text)

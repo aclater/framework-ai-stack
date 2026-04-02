@@ -12,11 +12,12 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
+import numpy as np
 import uvicorn
+from fastembed import TextEmbedding
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from qdrant_client import QdrantClient
-from sentence_transformers import SentenceTransformer
 
 from reranker import rerank
 from grounding import (
@@ -44,7 +45,7 @@ log = logging.getLogger("rag-proxy")
 MODEL_URL = os.environ.get("MODEL_URL", "http://127.0.0.1:8080")
 QDRANT_URL = os.environ.get("QDRANT_URL", "http://127.0.0.1:6333")
 COLLECTION_NAME = os.environ.get("QDRANT_COLLECTION", "documents")
-EMBED_MODEL = os.environ.get("EMBED_MODEL", "sentence-transformers/all-mpnet-base-v2")
+EMBED_MODEL = os.environ.get("EMBED_MODEL", "BAAI/bge-base-en-v1.5")
 TOP_K = int(os.environ.get("RAG_TOP_K", "20"))
 PROXY_PORT = int(os.environ.get("RAG_PROXY_PORT", "8090"))
 
@@ -55,7 +56,7 @@ THINKING_BUDGET = int(os.environ.get("THINKING_BUDGET", "1024"))
 # ── Globals initialized at startup ───────────────────────────────────────────
 
 qdrant: QdrantClient = None
-embedder: SentenceTransformer = None
+embedder: TextEmbedding = None
 docstore = None
 _collection_exists: bool = False
 
@@ -79,20 +80,17 @@ def startup():
     if not _collection_exists:
         log.warning("Collection '%s' not found in Qdrant — RAG context will be empty until documents are ingested", COLLECTION_NAME)
 
-    # Force CPU for the embedding model — ROCm PyTorch segfaults on gfx1151
-    # when loading sentence-transformers models on GPU (same issue as the
-    # reranker, see ADR-013). EMBED_DEVICE env var allows override.
-    embed_device = os.environ.get("EMBED_DEVICE", "cpu")
-    log.info("Loading embedding model: %s on %s", EMBED_MODEL, embed_device)
-    embedder = SentenceTransformer(EMBED_MODEL, device=embed_device)
+    # fastembed uses ONNX Runtime (CPU-only) — no PyTorch, no GPU segfault risk
+    log.info("Loading embedding model: %s (fastembed/ONNX)", EMBED_MODEL)
+    embedder = TextEmbedding(EMBED_MODEL)
 
     from docstore import create_docstore
     docstore = create_docstore()
 
     # Warm up the reranker so first request isn't slow
     try:
-        from reranker import _get_model
-        _get_model()
+        from reranker import warm_up
+        warm_up()
     except Exception:
         log.warning("Reranker warm-up failed — will load on first request")
 
@@ -112,7 +110,8 @@ def shutdown():
 @functools.lru_cache(maxsize=EMBED_CACHE_SIZE)
 def _embed_query(query: str) -> tuple:
     """Embed a query string, caching the result. Returns tuple for hashability."""
-    return tuple(embedder.encode(query).tolist())
+    vectors = list(embedder.embed([query]))
+    return tuple(vectors[0].tolist())
 
 
 def _check_collection() -> bool:
@@ -384,6 +383,33 @@ async def chat_completions(request: Request):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.api_route("/v1/embeddings", methods=["POST"])
+async def embeddings(request: Request):
+    """OpenAI-compatible embeddings endpoint. Used by rag-watcher to avoid
+    loading its own model — saves ~1-2 GB RAM."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
+
+    texts = body.get("input", [])
+    if isinstance(texts, str):
+        texts = [texts]
+    if not texts:
+        return JSONResponse({"error": "No input provided"}, status_code=400)
+
+    loop = asyncio.get_event_loop()
+    vectors = await loop.run_in_executor(
+        _executor, lambda: [v.tolist() for v in embedder.embed(texts)]
+    )
+
+    return JSONResponse({
+        "object": "list",
+        "data": [{"object": "embedding", "embedding": v, "index": i} for i, v in enumerate(vectors)],
+        "model": EMBED_MODEL,
+    })
 
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])

@@ -115,7 +115,7 @@ def test_model_swap_via_env():
     """RERANKER_MODEL env var changes the model name without error."""
     mod = _reload_reranker(
         RERANKER_ENABLED="true",
-        RERANKER_MODEL="cross-encoder/ms-marco-MiniLM-L-6-v2",
+        RERANKER_MODEL="Xenova/ms-marco-MiniLM-L-6-v2",
         RERANKER_TOP_N="3",
     )
     results = _make_results(5)

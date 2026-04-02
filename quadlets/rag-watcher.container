@@ -4,18 +4,18 @@
 
 [Unit]
 Description=Google Drive RAG watcher
-After=local-fs.target network-online.target qdrant.service
+After=local-fs.target network-online.target qdrant.service rag-proxy.service
 Wants=network-online.target
-Requires=qdrant.service
+Requires=qdrant.service rag-proxy.service
 
 [Container]
 # Pre-built image with deps + models baked in (see rag-watcher/Containerfile)
 # Build: podman build -t localhost/rag-watcher rag-watcher/
 Image=localhost/rag-watcher:latest
 
-Volume=%h/git/framework-ai-stack/rag-watcher:/app:ro,Z
-Volume=%h/git/framework-ai-stack/rag-proxy/docstore.py:/app/docstore.py:ro,Z
-Volume=%h/.config/ramalama/gdrive-sa.json:/run/secrets/gdrive-sa.json:ro,Z
+Volume=%h/git/framework-ai-stack/rag-watcher:/app:ro,z
+Volume=%h/git/framework-ai-stack/rag-proxy/docstore.py:/app/docstore.py:ro,z
+Volume=%h/.config/ramalama/gdrive-sa.json:/run/secrets/gdrive-sa.json:ro,z
 Volume=rag-staging:/staging:Z
 
 EnvironmentFile=%h/.config/llm-stack/env
@@ -23,7 +23,7 @@ Environment=GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/gdrive-sa.json
 Environment=STAGING_DIR=/staging
 Environment=QDRANT_URL=http://host.containers.internal:6333
 Environment=QDRANT_COLLECTION=documents
-Environment=EMBED_MODEL=sentence-transformers/all-mpnet-base-v2
+Environment=EMBED_URL=http://host.containers.internal:8090/v1/embeddings
 Environment=DOCSTORE_BACKEND=postgres
 Environment=DOCSTORE_URL=postgresql://litellm:litellm@host.containers.internal:5432/litellm
 

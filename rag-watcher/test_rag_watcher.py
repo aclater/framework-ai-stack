@@ -20,9 +20,8 @@ for _mod in [
         _STUBS[_mod] = MagicMock()
         sys.modules[_mod] = _STUBS[_mod]
 
-# sentence_transformers and qdrant_client are real packages used by other
-# test files — only stub if they're genuinely missing.
-for _mod in ["sentence_transformers", "qdrant_client", "qdrant_client.models"]:
+# qdrant_client is a real package used by other test files — only stub if missing.
+for _mod in ["qdrant_client", "qdrant_client.models"]:
     try:
         __import__(_mod)
     except ImportError:

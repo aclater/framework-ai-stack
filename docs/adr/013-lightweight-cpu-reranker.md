@@ -2,7 +2,12 @@
 
 ## Status
 
-Accepted (2026-04-02)
+Accepted (2026-04-02). Superseded in part: PyTorch eliminated entirely by
+switching to fastembed (ONNX Runtime). EMBED_DEVICE/RERANKER_DEVICE no
+longer needed. Embedding model changed from all-mpnet-base-v2 to
+BAAI/bge-base-en-v1.5. Reranker model changed from
+cross-encoder/ms-marco-MiniLM-L-6-v2 to Xenova/ms-marco-MiniLM-L-6-v2
+(same weights, ONNX format).
 
 ## Context
 

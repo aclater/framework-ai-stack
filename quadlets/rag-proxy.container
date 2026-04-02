@@ -14,9 +14,9 @@ Requires=qdrant.service postgres.service
 # Falls back to base UBI9 image if not built (pip install at runtime)
 Image=localhost/rag-proxy:latest
 
-Volume=%h/git/framework-ai-stack/rag-proxy:/app:ro,Z
+Volume=%h/git/framework-ai-stack/rag-proxy:/app:ro,z
 
-# Writable model cache for sentence-transformers and cross-encoder models
+# Writable model cache for fastembed ONNX models
 Volume=rag-proxy-model-cache:/opt/app-root/src/.cache:Z
 
 # Run as non-root user (default in UBI Python images, UID 1001)
@@ -25,9 +25,8 @@ User=1001
 Environment=MODEL_URL=http://host.containers.internal:8080
 Environment=QDRANT_URL=http://host.containers.internal:6333
 Environment=QDRANT_COLLECTION=documents
-Environment=EMBED_MODEL=sentence-transformers/all-mpnet-base-v2
-# Force CPU — ROCm PyTorch segfaults on gfx1151 for sentence-transformers
-Environment=EMBED_DEVICE=cpu
+# fastembed uses ONNX Runtime (CPU-only, no PyTorch) — no GPU segfault risk
+Environment=EMBED_MODEL=BAAI/bge-base-en-v1.5
 Environment=RAG_TOP_K=20
 Environment=RAG_PROXY_PORT=8090
 
@@ -35,13 +34,9 @@ Environment=RAG_PROXY_PORT=8090
 Environment=DOCSTORE_BACKEND=postgres
 Environment=DOCSTORE_URL=postgresql://litellm:litellm@host.containers.internal:5432/litellm
 
-# Reranker — lightweight CPU model (22M params, sub-second on CPU)
-# The heavier BAAI/bge-reranker-v2-m3 (0.6B) needs GPU or takes 60s on CPU.
-# ms-marco-MiniLM-L-6-v2 trades some multilingual quality for ~100x speed.
-# Swap to BAAI/bge-reranker-v2-m3 when GPU reranking is stable on gfx1151.
+# Reranker — lightweight ONNX model (22M params, sub-second on CPU)
 Environment=RERANKER_ENABLED=true
-Environment=RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
-Environment=RERANKER_DEVICE=cpu
+Environment=RERANKER_MODEL=Xenova/ms-marco-MiniLM-L-6-v2
 Environment=RERANKER_TOP_N=5
 
 # Thinking budget — modest token budget for reasoning across sources

@@ -2,5 +2,6 @@ fastapi
 uvicorn
 httpx
 qdrant-client
-sentence-transformers
+fastembed
+numpy
 psycopg2-binary

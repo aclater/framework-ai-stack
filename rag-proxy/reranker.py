@@ -1,12 +1,11 @@
 """Reranker stage for the RAG proxy — scores and reorders retrieved chunks.
 
 Runs after Qdrant vector search, before results are passed to the LLM.
-Uses a cross-encoder model to score (query, document) pairs and returns
-the top_n highest-scoring results in the same schema as the input.
+Uses a cross-encoder model via fastembed (ONNX Runtime, CPU-only) to score
+(query, document) pairs and returns the top_n highest-scoring results.
 
-Default model: cross-encoder/ms-marco-MiniLM-L-6-v2 (Apache 2.0, 22M, English).
-The heavier BAAI/bge-reranker-v2-m3 (0.6B, multilingual) is available via
-RERANKER_MODEL env var but requires GPU or takes ~60s on CPU.
+Default model: Xenova/ms-marco-MiniLM-L-6-v2 (ONNX, 22M, English).
+No PyTorch dependency — fastembed uses ONNX Runtime for lightweight inference.
 """
 
 import logging
@@ -17,42 +16,29 @@ from typing import Any
 log = logging.getLogger("rag-proxy.reranker")
 
 RERANKER_ENABLED = os.environ.get("RERANKER_ENABLED", "true").lower() in ("true", "1", "yes")
-RERANKER_MODEL = os.environ.get("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
-RERANKER_DEVICE = os.environ.get("RERANKER_DEVICE", "cpu")
-RERANKER_TOP_K = int(os.environ.get("RERANKER_TOP_K", "20"))
+RERANKER_MODEL = os.environ.get("RERANKER_MODEL", "Xenova/ms-marco-MiniLM-L-6-v2")
 RERANKER_TOP_N = int(os.environ.get("RERANKER_TOP_N", "5"))
 
 _model = None
 
 
-def _detect_device() -> str:
-    """Detect best available device: ROCm/CUDA GPU or CPU."""
-    if RERANKER_DEVICE:
-        return RERANKER_DEVICE
-
-    try:
-        import torch
-        if torch.cuda.is_available():
-            return "cuda"
-    except ImportError:
-        pass
-
-    return "cpu"
-
-
 def _get_model():
-    """Lazy-load the cross-encoder model."""
+    """Lazy-load the cross-encoder reranker via fastembed."""
     global _model
     if _model is not None:
         return _model
 
-    from sentence_transformers import CrossEncoder
+    from fastembed.rerank.cross_encoder import TextCrossEncoder
 
-    device = _detect_device()
-    log.info("Loading reranker model %s on %s", RERANKER_MODEL, device)
-    _model = CrossEncoder(RERANKER_MODEL, device=device)
+    log.info("Loading reranker model %s (fastembed/ONNX)", RERANKER_MODEL)
+    _model = TextCrossEncoder(model_name=RERANKER_MODEL)
     log.info("Reranker model loaded")
     return _model
+
+
+def warm_up():
+    """Load the model eagerly at startup instead of on first request."""
+    _get_model()
 
 
 def rerank(query: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -76,10 +62,10 @@ def rerank(query: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     model = _get_model()
 
-    pairs = [(query, r["text"]) for r in results]
+    documents = [r["text"] for r in results]
 
     start = time.monotonic()
-    scores = model.predict(pairs)
+    scores = list(model.rerank(query, documents))
     elapsed_ms = (time.monotonic() - start) * 1000
 
     log.debug("Reranked %d candidates in %.1f ms", len(results), elapsed_ms)

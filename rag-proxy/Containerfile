@@ -1,15 +1,15 @@
 # RAG proxy — pre-built image with all Python dependencies
 # Base: UBI9 Python 3.11 (same digest as quadlet for consistency)
+# Uses fastembed (ONNX Runtime) instead of PyTorch — ~200 MB vs ~2 GB
 FROM registry.access.redhat.com/ubi9/python-311@sha256:8fb94e142e1093b82ca64b334264a5da8e874567d64ce4b6d614f86da3e38813
 
 # Install dependencies at build time (not runtime)
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt && \
-    rm /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 # Pre-download models so first request isn't slow
-RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-mpnet-base-v2')" && \
-    python3 -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')"
+RUN python3 -c "from fastembed import TextEmbedding; TextEmbedding('BAAI/bge-base-en-v1.5')" && \
+    python3 -c "from fastembed.rerank.cross_encoder import TextCrossEncoder; TextCrossEncoder('Xenova/ms-marco-MiniLM-L-6-v2')"
 
 # App code is mounted as a volume at runtime for dev workflow
 WORKDIR /app

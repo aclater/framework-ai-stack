@@ -68,7 +68,7 @@ All via environment variables in `~/.config/llm-stack/env`:
 | `WATCH_INTERVAL_MINUTES` | 15 | Poll interval |
 | `QDRANT_URL` | `http://127.0.0.1:6333` | Qdrant endpoint |
 | `QDRANT_COLLECTION` | documents | Collection name |
-| `EMBED_MODEL` | `sentence-transformers/all-mpnet-base-v2` | Embedding model |
+| `EMBED_URL` | `http://127.0.0.1:8090/v1/embeddings` | Embedding endpoint (delegates to rag-proxy) |
 | `CHUNK_SIZE` | 1024 | Max chunk size in characters |
 | `CHUNK_OVERLAP` | 128 | Overlap between chunks |
 | `DOCSTORE_BACKEND` | postgres | `postgres` or `sqlite` |
