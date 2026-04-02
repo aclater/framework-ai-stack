@@ -433,11 +433,6 @@ def ensure_collection(qdrant, collection_name: str, vector_size: int):
 
 def _get_docstore():
     """Lazy-import and create docstore to avoid import at module level."""
-    # docstore.py lives in rag-proxy; add its path for import
-    import sys
-    proxy_dir = str(Path(__file__).resolve().parent.parent / "rag-proxy")
-    if proxy_dir not in sys.path:
-        sys.path.insert(0, proxy_dir)
     from docstore import create_docstore
     return create_docstore()
 
