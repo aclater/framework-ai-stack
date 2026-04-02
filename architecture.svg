@@ -1,4 +1,4 @@
-<svg width="100%" viewBox="0 0 780 680" xmlns="http://www.w3.org/2000/svg" style="font-family:system-ui,sans-serif;background:transparent">
+<svg width="100%" viewBox="0 0 780 700" xmlns="http://www.w3.org/2000/svg" style="font-family:system-ui,sans-serif;background:transparent">
 
 <defs>
   <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -56,15 +56,16 @@
 <rect x="30" y="28" width="360" height="48" rx="8" stroke-width="0.5" class="c-gray-fill"/>
 <text class="th c-gray-text" x="210" y="52" text-anchor="middle" dominant-baseline="central">Claude Code · Open WebUI · clients</text>
 
-<!-- Google Drive -->
+<!-- Document sources -->
 <rect x="420" y="28" width="340" height="48" rx="8" stroke-width="0.5" class="c-sand-fill"/>
-<text class="th c-sand-text" x="590" y="52" text-anchor="middle" dominant-baseline="central">Google Drive</text>
+<text class="th c-sand-text" x="590" y="44" text-anchor="middle" dominant-baseline="central">Document sources</text>
+<text class="ts c-sand-text" x="590" y="62" text-anchor="middle" dominant-baseline="central">Google Drive · git repos · web URLs</text>
 
 <!-- Arrow client → LiteLLM -->
 <line x1="210" y1="76" x2="210" y2="106" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
 <text class="ts muted" x="225" y="93" dominant-baseline="central">:4000</text>
 
-<!-- Arrow Drive → RAG watcher -->
+<!-- Arrow sources → watcher -->
 <line x1="590" y1="76" x2="590" y2="106" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
 
 <!-- LiteLLM proxy -->
@@ -75,13 +76,13 @@
 <!-- RAG watcher -->
 <rect x="420" y="108" width="340" height="60" rx="8" stroke-width="0.5" class="c-sand-fill"/>
 <text class="th c-sand-text" x="590" y="130" text-anchor="middle" dominant-baseline="central">RAG watcher</text>
-<text class="ts c-sand-text" x="590" y="150" text-anchor="middle" dominant-baseline="central">polls Drive · extracts text · embeds into Qdrant</text>
+<text class="ts c-sand-text" x="590" y="150" text-anchor="middle" dominant-baseline="central">extract · chunk · embed · ingest into Qdrant</text>
 
 <!-- Arrow LiteLLM → RAG proxy -->
 <line x1="210" y1="168" x2="210" y2="208" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
 <text class="ts muted" x="225" y="190" dominant-baseline="central">:8090</text>
 
-<!-- Arrow RAG watcher → Qdrant -->
+<!-- Arrow watcher → Qdrant -->
 <line x1="590" y1="168" x2="590" y2="208" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
 
 <!-- RAG proxy -->
@@ -98,45 +99,45 @@
 <line x1="390" y1="240" x2="418" y2="240" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
 
 <!-- Arrow RAG proxy → model -->
-<line x1="210" y1="270" x2="210" y2="308" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
-<text class="ts muted" x="225" y="291" dominant-baseline="central">:8080</text>
+<line x1="210" y1="270" x2="210" y2="318" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
+<text class="ts muted" x="225" y="296" dominant-baseline="central">:8080</text>
 
 <!-- RamaLama dashed container -->
-<rect x="24" y="294" width="378" height="120" rx="6" fill="none" stroke-dasharray="4 3" stroke-width="0.5" stroke="#888780"/>
-<text class="tl muted" x="37" y="287" dominant-baseline="central">RamaLama · ROCm</text>
+<rect x="24" y="304" width="378" height="120" rx="6" fill="none" stroke-dasharray="4 3" stroke-width="0.5" stroke="#888780"/>
+<text class="tl muted" x="37" y="297" dominant-baseline="central">RamaLama · ROCm</text>
 
 <!-- Qwen model -->
-<rect x="42" y="308" width="344" height="92" rx="8" stroke-width="0.5" class="c-teal-fill"/>
-<text class="th c-teal-text" x="214" y="332" text-anchor="middle" dominant-baseline="central">Qwen3.5-35B-A3B</text>
-<text class="ts c-teal-text" x="214" y="354" text-anchor="middle" dominant-baseline="central">MoE · 3B active params · ~22 GB</text>
-<text class="ts c-teal-text" x="214" y="374" text-anchor="middle" dominant-baseline="central">thinking + non-thinking · ctx 131072</text>
+<rect x="42" y="318" width="344" height="92" rx="8" stroke-width="0.5" class="c-teal-fill"/>
+<text class="th c-teal-text" x="214" y="342" text-anchor="middle" dominant-baseline="central">Qwen3.5-35B-A3B</text>
+<text class="ts c-teal-text" x="214" y="364" text-anchor="middle" dominant-baseline="central">MoE · 3B active params · ~22 GB</text>
+<text class="ts c-teal-text" x="214" y="384" text-anchor="middle" dominant-baseline="central">thinking + non-thinking · ctx 131072</text>
 
 <!-- Arrow model → GPU -->
-<line x1="210" y1="414" x2="210" y2="444" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="210" y1="424" x2="210" y2="454" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
 
 <!-- GPU layer -->
-<rect x="30" y="446" width="730" height="56" rx="8" stroke-width="0.5" class="c-green-fill"/>
-<text class="th c-green-text" x="395" y="468" text-anchor="middle" dominant-baseline="central">AMD Ryzen AI Max+ 395 · gfx1151 · ROCm</text>
-<text class="ts c-green-text" x="395" y="488" text-anchor="middle" dominant-baseline="central">64 GB VRAM + 64 GB GTT · 62 GB system RAM</text>
+<rect x="30" y="456" width="730" height="56" rx="8" stroke-width="0.5" class="c-green-fill"/>
+<text class="th c-green-text" x="395" y="478" text-anchor="middle" dominant-baseline="central">AMD Ryzen AI Max+ 395 · gfx1151 · ROCm</text>
+<text class="ts c-green-text" x="395" y="498" text-anchor="middle" dominant-baseline="central">64 GB VRAM + 64 GB GTT · 62 GB system RAM</text>
 
 <!-- Separator -->
-<line x1="30" y1="522" x2="760" y2="522" stroke-dasharray="3 3" stroke-width="0.5" stroke="#888780"/>
+<line x1="30" y1="532" x2="760" y2="532" stroke-dasharray="3 3" stroke-width="0.5" stroke="#888780"/>
 
 <!-- Bottom row -->
-<rect x="30"  y="536" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
-<text class="th c-gray-text" x="115" y="557" text-anchor="middle" dominant-baseline="central">Open WebUI</text>
-<text class="ts c-gray-text" x="115" y="576" text-anchor="middle" dominant-baseline="central">v0.8.6 · :3000</text>
+<rect x="30"  y="546" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
+<text class="th c-gray-text" x="115" y="567" text-anchor="middle" dominant-baseline="central">Open WebUI</text>
+<text class="ts c-gray-text" x="115" y="586" text-anchor="middle" dominant-baseline="central">v0.8.6 · :3000</text>
 
-<rect x="215" y="536" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
-<text class="th c-gray-text" x="300" y="557" text-anchor="middle" dominant-baseline="central">PostgreSQL</text>
-<text class="ts c-gray-text" x="300" y="576" text-anchor="middle" dominant-baseline="central">LiteLLM state · :5432</text>
+<rect x="215" y="546" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
+<text class="th c-gray-text" x="300" y="567" text-anchor="middle" dominant-baseline="central">PostgreSQL</text>
+<text class="ts c-gray-text" x="300" y="586" text-anchor="middle" dominant-baseline="central">sclorg · :5432</text>
 
-<rect x="400" y="536" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
-<text class="th c-gray-text" x="485" y="557" text-anchor="middle" dominant-baseline="central">Fedora 43</text>
-<text class="ts c-gray-text" x="485" y="576" text-anchor="middle" dominant-baseline="central">Podman quadlets</text>
+<rect x="400" y="546" width="175" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
+<text class="th c-gray-text" x="487" y="567" text-anchor="middle" dominant-baseline="central">UBI10 · Fedora 43</text>
+<text class="ts c-gray-text" x="487" y="586" text-anchor="middle" dominant-baseline="central">SELinux enforcing</text>
 
-<rect x="585" y="536" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
-<text class="th c-gray-text" x="670" y="557" text-anchor="middle" dominant-baseline="central">systemd</text>
-<text class="ts c-gray-text" x="670" y="576" text-anchor="middle" dominant-baseline="central">rootless user services</text>
+<rect x="590" y="546" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
+<text class="th c-gray-text" x="675" y="567" text-anchor="middle" dominant-baseline="central">systemd</text>
+<text class="ts c-gray-text" x="675" y="586" text-anchor="middle" dominant-baseline="central">rootless Podman quadlets</text>
 
 </svg>

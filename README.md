@@ -8,15 +8,15 @@ Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB
 
 | Service | Image | Port | Notes |
 |---|---|---|---|
-| postgres | `postgres:16-alpine` | 5432 | Backing store for LiteLLM |
+| postgres | `quay.io/sclorg/postgresql-16-c9s` | 5432 | Backing store for LiteLLM |
 | qdrant | `docker.io/qdrant/qdrant` | 6333 | Vector database for RAG |
 | ramalama | `quay.io/ramalama/rocm:latest` | 8080 | Qwen3.5-35B-A3B UD-Q4\_K\_XL (~22 GB) |
-| rag-proxy | `registry.fedoraproject.org/fedora:43` | 8090 | Qdrant search + context injection |
+| rag-proxy | `ubi10/python-312-minimal` | 8090 | Qdrant search + context injection |
 | litellm | `ghcr.io/berriai/litellm:main-stable` | 4000 | OpenAI-compatible proxy |
 | open-webui | `ghcr.io/open-webui/open-webui:v0.8.6` | 3000 | Chat UI, pinned to v0.8.6 |
-| rag-watcher | `registry.fedoraproject.org/fedora:43` | — | Polls Google Drive, ingests into Qdrant |
+| rag-watcher | `ubi10` | — | Ingests from Drive, git repos, and web URLs into Qdrant |
 
-Models are pulled and managed by [RamaLama](https://github.com/containers/ramalama). LiteLLM routes all aliases through the RAG proxy, which searches Qdrant for relevant document chunks and injects them as context before forwarding to the model. New documents added to Google Drive are automatically ingested — no model restart required.
+Models are pulled and managed by [RamaLama](https://github.com/containers/ramalama). LiteLLM routes all aliases through the RAG proxy, which searches Qdrant for relevant document chunks and injects them as context before forwarding to the model. Documents from Google Drive, git repos, and web URLs are automatically ingested — no model restart required.
 
 ## Prerequisites
 
