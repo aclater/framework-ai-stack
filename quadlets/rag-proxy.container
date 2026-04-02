@@ -27,7 +27,9 @@ Environment=MODEL_URL=http://host.containers.internal:8080
 Environment=QDRANT_URL=http://host.containers.internal:6333
 Environment=QDRANT_COLLECTION=documents
 Environment=EMBED_MODEL=sentence-transformers/all-mpnet-base-v2
-Environment=RAG_TOP_K=20
+# Reduced from 20 to 8 — reranker on CPU takes ~3s/candidate,
+# so 20 candidates = 60s latency. 8 candidates ≈ 24s.
+Environment=RAG_TOP_K=8
 Environment=RAG_PROXY_PORT=8090
 
 # Document store — hydrates chunk text from Postgres at query time
@@ -35,7 +37,9 @@ Environment=DOCSTORE_BACKEND=postgres
 Environment=DOCSTORE_URL=postgresql://litellm:litellm@host.containers.internal:5432/litellm
 
 # Reranker configuration
-Environment=RERANKER_ENABLED=true
+# Disabled: CPU reranking adds 24-60s latency per query. Re-enable when
+# GPU access is available in this container or a lighter model is used.
+Environment=RERANKER_ENABLED=false
 Environment=RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 Environment=RERANKER_DEVICE=cpu
 Environment=RERANKER_TOP_N=5
