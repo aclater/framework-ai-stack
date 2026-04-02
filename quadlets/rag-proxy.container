@@ -40,6 +40,10 @@ Environment=RERANKER_MODEL=BAAI/bge-reranker-v2-m3
 Environment=RERANKER_DEVICE=cpu
 Environment=RERANKER_TOP_N=5
 
+# Thinking budget — modest token budget for reasoning across sources
+# without unconstrained latency
+Environment=THINKING_BUDGET=1024
+
 # HuggingFace cache location (inside the writable volume)
 Environment=HF_HOME=/opt/app-root/src/.cache/huggingface
 Environment=TRANSFORMERS_CACHE=/opt/app-root/src/.cache/huggingface
