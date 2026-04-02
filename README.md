@@ -93,12 +93,21 @@ Available model aliases (all route to Qwen3.5-35B-A3B on :8080):
 
 ### Architecture Decision Records
 
+**Infrastructure**
+
+| ADR | Decision |
+|-----|----------|
+| [004](docs/adr/004-ubi-container-strategy.md) | UBI container base images with SELinux enforcing |
+| [006](docs/adr/006-llamacpp-rocm-over-vllm.md) | llama.cpp/ROCm as inference backend over vLLM |
+| [010](docs/adr/010-uma-memory-configuration.md) | Unified memory configuration — remove LLAMA\_HIP\_UMA=1 |
+
+**RAG pipeline**
+
 | ADR | Decision |
 |-----|----------|
 | [001](docs/adr/001-live-qdrant-over-oci-images.md) | Live Qdrant over ramalama rag OCI images |
 | [002](docs/adr/002-reference-only-indexing.md) | Reference-only indexing — vectors in Qdrant, text in Postgres |
 | [003](docs/adr/003-corpus-preferring-grounding.md) | Corpus-preferring grounding with transparent fallback |
-| [004](docs/adr/004-ubi-container-strategy.md) | UBI container base images with SELinux enforcing |
 
 ## Acknowledgements
 
