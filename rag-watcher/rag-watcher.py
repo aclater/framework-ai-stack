@@ -403,19 +403,53 @@ def get_embedder():
 
 
 def ensure_collection(qdrant, collection_name: str, vector_size: int):
-    from qdrant_client.models import Distance, VectorParams
+    """Create Qdrant collection with scalar int8 quantization.
+
+    Quantization reduces memory footprint of vectors. always_ram=True is
+    required because HNSW rescoring needs quantized vectors in RAM for
+    accurate distance computation during search.
+
+    NOTE: Qdrant does not support adding quantization to an existing
+    collection in place. If the collection already exists without
+    quantization, it must be dropped and recreated.
+    """
+    from qdrant_client.models import Distance, VectorParams, ScalarQuantization, ScalarQuantizationConfig, ScalarType
+
     collections = [c.name for c in qdrant.get_collections().collections]
     if collection_name not in collections:
         qdrant.create_collection(
             collection_name=collection_name,
             vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
+            quantization_config=ScalarQuantization(
+                scalar=ScalarQuantizationConfig(
+                    type=ScalarType.INT8,
+                    quantile=0.99,
+                    always_ram=True,
+                ),
+            ),
         )
-        log.info("Created Qdrant collection: %s", collection_name)
+        log.info("Created Qdrant collection '%s' with int8 scalar quantization", collection_name)
+
+
+def _get_docstore():
+    """Lazy-import and create docstore to avoid import at module level."""
+    # docstore.py lives in rag-proxy; add its path for import
+    import sys
+    proxy_dir = str(Path(__file__).resolve().parent.parent / "rag-proxy")
+    if proxy_dir not in sys.path:
+        sys.path.insert(0, proxy_dir)
+    from docstore import create_docstore
+    return create_docstore()
 
 
 def ingest_docs(docs: list[dict]) -> bool:
-    """Chunk documents, embed, and upsert into Qdrant."""
+    """Chunk documents, persist to docstore, embed, and upsert references to Qdrant.
+
+    Qdrant payloads contain only {doc_id, chunk_id, source, created_at}.
+    Full chunk text lives in the document store.
+    """
     from qdrant_client.models import PointStruct
+    from datetime import datetime, timezone
 
     if not docs:
         log.info("No documents to ingest")
@@ -425,39 +459,57 @@ def ingest_docs(docs: list[dict]) -> bool:
     chunk_size = int(os.environ.get("CHUNK_SIZE", "1024"))
     chunk_overlap = int(os.environ.get("CHUNK_OVERLAP", "128"))
 
+    # Chunk all documents and assign stable doc_id per source
     all_chunks = []
     for doc in docs:
+        doc_id = str(uuid.uuid5(uuid.NAMESPACE_URL, doc["source"]))
         chunks = chunk_text(doc["text"], chunk_size, chunk_overlap)
-        total = len(chunks)
         for i, chunk in enumerate(chunks):
             all_chunks.append({
+                "doc_id": doc_id,
+                "chunk_id": i,
                 "text": chunk,
                 "source": doc["source"],
-                "chunk_id": i,
-                "chunk_total": total,
             })
-        log.info("Chunked %s → %d chunks", doc["source"], total)
+        log.info("Chunked %s → %d chunks (doc_id=%s)", doc["source"], len(chunks), doc_id)
 
     if not all_chunks:
         log.warning("No text chunks to ingest")
         return True
 
+    # Step 1: Persist to docstore (must succeed before Qdrant upsert)
+    docstore = _get_docstore()
+    docstore.upsert_chunks(all_chunks)
+    log.info("Persisted %d chunks to docstore", len(all_chunks))
+
+    # Step 2: Embed chunk texts
     log.info("Embedding %d chunks...", len(all_chunks))
     embedder = get_embedder()
     texts = [c["text"] for c in all_chunks]
     vectors = embedder.encode(texts, show_progress_bar=True).tolist()
 
+    # Step 3: Upsert reference-only payloads to Qdrant
     qdrant = get_qdrant_client()
 
-    # Full rebuild: drop and recreate collection
+    # Full rebuild: drop and recreate collection with quantization
     try:
         qdrant.delete_collection(collection_name)
     except Exception:
         pass
     ensure_collection(qdrant, collection_name, len(vectors[0]))
 
+    now = datetime.now(timezone.utc).isoformat()
     points = [
-        PointStruct(id=str(uuid.uuid4()), vector=vec, payload=chunk)
+        PointStruct(
+            id=str(uuid.uuid4()),
+            vector=vec,
+            payload={
+                "doc_id": chunk["doc_id"],
+                "chunk_id": chunk["chunk_id"],
+                "source": chunk["source"],
+                "created_at": now,
+            },
+        )
         for vec, chunk in zip(vectors, all_chunks)
     ]
 
@@ -465,7 +517,7 @@ def ingest_docs(docs: list[dict]) -> bool:
     for i in range(0, len(points), batch_size):
         qdrant.upsert(collection_name=collection_name, points=points[i : i + batch_size])
 
-    log.info("Ingested %d chunks into Qdrant collection '%s'", len(points), collection_name)
+    log.info("Ingested %d reference points into Qdrant collection '%s'", len(points), collection_name)
     return True
 
 

@@ -9,3 +9,4 @@ pypdf
 python-docx
 python-pptx
 openpyxl
+psycopg2-binary
