@@ -6,7 +6,7 @@ Description=PostgreSQL for LiteLLM
 After=local-fs.target
 
 [Container]
-Image=docker.io/library/postgres:16-alpine
+Image=quay.io/sclorg/postgresql-16-c9s:latest
 
 Volume=litellm-db-data.volume:/var/lib/postgresql/data:Z
 

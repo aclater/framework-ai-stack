@@ -9,7 +9,7 @@ Wants=network-online.target
 Requires=qdrant.service
 
 [Container]
-Image=registry.fedoraproject.org/fedora:43
+Image=registry.access.redhat.com/ubi10:latest
 
 Volume=%h/git/framework-ai-stack/rag-watcher:/app:ro,Z
 Volume=%h/.config/ramalama/gdrive-sa.json:/run/secrets/gdrive-sa.json:ro,Z
@@ -23,9 +23,8 @@ Environment=QDRANT_COLLECTION=documents
 Environment=EMBED_MODEL=sentence-transformers/all-mpnet-base-v2
 
 Network=host
-SecurityLabelDisable=true
 
-Exec=bash -c "dnf install -y -q python3-pip && pip install --quiet -r /app/requirements.txt && python3 /app/rag-watcher.py"
+Exec=bash -c "dnf install -y -q python3.12 python3.12-pip git-core && pip3.12 install --quiet -r /app/requirements.txt && python3.12 /app/rag-watcher.py"
 
 ContainerName=rag-watcher
 

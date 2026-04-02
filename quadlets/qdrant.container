@@ -11,6 +11,7 @@ Wants=network-online.target
 Image=docker.io/qdrant/qdrant:latest
 
 Volume=qdrant-data:/qdrant/storage:Z
+# Required: Debian-based binary triggers SELinux execmem denial on Fedora 43
 SecurityLabelDisable=true
 
 PublishPort=6333:6333

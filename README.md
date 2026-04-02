@@ -105,6 +105,10 @@ Available model aliases (all route to Qwen3.5-35B-A3B on :8080):
 
 A stub service slot is reserved for the [AIMI](https://www.redhat.com/en/about/press-releases/red-hat-accelerates-ai-trust-and-security-chatterbox-labs-acquisition) guardrails platform once it becomes available via Red Hat channels. See the commented block in `configs/litellm-config.yaml`.
 
+## Acknowledgements
+
+Document loading patterns (git shallow clone with incremental pull, web extraction, chunking with source attribution) are adapted from the [Red Hat Validated Patterns vector-embedder](https://github.com/validatedpatterns-sandbox/vector-embedder).
+
 ## License
 
 MIT

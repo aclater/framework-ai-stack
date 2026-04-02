@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
-"""Google Drive RAG watcher — polls a Drive folder and ingests documents into Qdrant."""
+"""RAG watcher — ingests documents from Google Drive, git repos, and web URLs into Qdrant.
+
+Document loading patterns (git shallow clone, glob filtering, web extraction, chunking
+with source attribution) are adapted from the Red Hat Validated Patterns vector-embedder:
+https://github.com/validatedpatterns-sandbox/vector-embedder
+"""
 
 import json
 import logging
 import os
+import shutil
+import subprocess
 import sys
 import time
 import uuid
 from pathlib import Path
-
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,26 +23,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("rag-watcher")
 
-SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
-
-# Supported MIME types and their export conversions (native Google formats)
-EXPORT_MAP = {
-    "application/vnd.google-apps.document": (
-        "application/pdf",
-        ".pdf",
-    ),
-    "application/vnd.google-apps.spreadsheet": (
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ".xlsx",
-    ),
-    "application/vnd.google-apps.presentation": (
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        ".pptx",
-    ),
-}
-
-# Binary file extensions we download directly
-DOWNLOAD_EXTENSIONS = {".pdf", ".docx", ".pptx", ".xlsx", ".html", ".md", ".txt"}
+# ── Configuration ────────────────────────────────────────────────────────────
 
 STATE_PATH = Path(
     os.environ.get(
@@ -47,6 +31,10 @@ STATE_PATH = Path(
         Path.home() / ".local" / "share" / "ramalama" / "rag-state.json",
     )
 )
+
+SUPPORTED_TEXT_EXTENSIONS = {".md", ".txt", ".html", ".adoc", ".rst"}
+SUPPORTED_BINARY_EXTENSIONS = {".pdf", ".docx", ".pptx", ".xlsx"}
+ALL_EXTENSIONS = SUPPORTED_TEXT_EXTENSIONS | SUPPORTED_BINARY_EXTENSIONS
 
 
 def load_state() -> dict:
@@ -60,85 +48,13 @@ def save_state(state: dict) -> None:
     STATE_PATH.write_text(json.dumps(state, indent=2))
 
 
-def get_drive_service():
-    creds_file = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-    if not creds_file:
-        log.error("GOOGLE_APPLICATION_CREDENTIALS is not set")
-        sys.exit(1)
-
-    creds_path = Path(creds_file).expanduser()
-    if not creds_path.exists():
-        log.error("Service account key not found: %s", creds_path)
-        sys.exit(1)
-
-    creds = service_account.Credentials.from_service_account_file(
-        str(creds_path), scopes=SCOPES
-    )
-    return build("drive", "v3", credentials=creds)
-
-
-def list_files(service, folder_id: str) -> list[dict]:
-    """List all supported files in the given Drive folder."""
-    results = []
-    page_token = None
-
-    while True:
-        resp = (
-            service.files()
-            .list(
-                q=f"'{folder_id}' in parents and trashed = false",
-                fields="nextPageToken, files(id, name, mimeType, modifiedTime)",
-                pageSize=100,
-                pageToken=page_token,
-            )
-            .execute()
-        )
-        results.extend(resp.get("files", []))
-        page_token = resp.get("nextPageToken")
-        if not page_token:
-            break
-
-    return results
-
-
-def download_file(service, file_info: dict, staging_dir: Path) -> bool:
-    """Download or export a single file to the staging directory."""
-    file_id = file_info["id"]
-    name = file_info["name"]
-    mime = file_info["mimeType"]
-
-    # Google native format — export
-    if mime in EXPORT_MAP:
-        export_mime, ext = EXPORT_MAP[mime]
-        dest = staging_dir / f"{Path(name).stem}{ext}"
-        log.info("Exporting %s → %s", name, dest.name)
-        request = service.files().export_media(fileId=file_id, mimeType=export_mime)
-    else:
-        # Regular file — check extension
-        ext = Path(name).suffix.lower()
-        if ext not in DOWNLOAD_EXTENSIONS:
-            log.debug("Skipping unsupported file: %s", name)
-            return False
-        dest = staging_dir / name
-        log.info("Downloading %s", name)
-        request = service.files().get_media(fileId=file_id)
-
-    with open(dest, "wb") as fh:
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-
-    return True
-
-
 # ── Text extraction ──────────────────────────────────────────────────────────
 
 def extract_text(file_path: Path) -> str:
-    """Extract text from a file based on its extension."""
+    """Extract text from a file based on its extension. Logs warnings on failure."""
     ext = file_path.suffix.lower()
 
-    if ext == ".md" or ext == ".txt" or ext == ".html":
+    if ext in SUPPORTED_TEXT_EXTENSIONS:
         return file_path.read_text(errors="replace")
 
     if ext == ".pdf":
@@ -191,21 +107,284 @@ def extract_text(file_path: Path) -> str:
     return ""
 
 
+# ── Chunking (adapted from vector-embedder's RecursiveCharacterTextSplitter pattern) ─
+
 def chunk_text(text: str, chunk_size: int = 1024, overlap: int = 128) -> list[str]:
-    """Split text into overlapping chunks."""
-    if len(text) <= chunk_size:
-        return [text] if text.strip() else []
+    """Split text into overlapping chunks using paragraph/sentence boundaries.
 
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunk = text[start:end].strip()
-        if chunk:
-            chunks.append(chunk)
-        start = end - overlap
+    Tries to split on paragraph breaks first, then sentences, then words,
+    falling back to character-level splits. Adapted from the chunking strategy
+    in validatedpatterns-sandbox/vector-embedder.
+    """
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-    return chunks
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size,
+        chunk_overlap=overlap,
+        separators=["\n\n", "\n", ". ", " ", ""],
+    )
+    return [chunk for chunk in splitter.split_text(text) if chunk.strip()]
+
+
+# ── Google Drive source ──────────────────────────────────────────────────────
+
+GDRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
+
+EXPORT_MAP = {
+    "application/vnd.google-apps.document": ("application/pdf", ".pdf"),
+    "application/vnd.google-apps.spreadsheet": (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ".xlsx",
+    ),
+    "application/vnd.google-apps.presentation": (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ".pptx",
+    ),
+}
+
+
+def get_drive_service():
+    from google.oauth2 import service_account
+    from googleapiclient.discovery import build
+
+    creds_file = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if not creds_file:
+        return None
+
+    creds_path = Path(creds_file).expanduser()
+    if not creds_path.exists():
+        log.warning("Service account key not found: %s — Drive source disabled", creds_path)
+        return None
+
+    creds = service_account.Credentials.from_service_account_file(
+        str(creds_path), scopes=GDRIVE_SCOPES
+    )
+    return build("drive", "v3", credentials=creds)
+
+
+def list_drive_files(service, folder_id: str) -> list[dict]:
+    results = []
+    page_token = None
+    while True:
+        resp = (
+            service.files()
+            .list(
+                q=f"'{folder_id}' in parents and trashed = false",
+                fields="nextPageToken, files(id, name, mimeType, modifiedTime)",
+                pageSize=100,
+                pageToken=page_token,
+            )
+            .execute()
+        )
+        results.extend(resp.get("files", []))
+        page_token = resp.get("nextPageToken")
+        if not page_token:
+            break
+    return results
+
+
+def download_drive_file(service, file_info: dict, staging_dir: Path) -> bool:
+    from googleapiclient.http import MediaIoBaseDownload
+
+    file_id = file_info["id"]
+    name = file_info["name"]
+    mime = file_info["mimeType"]
+
+    if mime in EXPORT_MAP:
+        export_mime, ext = EXPORT_MAP[mime]
+        dest = staging_dir / f"{Path(name).stem}{ext}"
+        log.info("Exporting %s → %s", name, dest.name)
+        request = service.files().export_media(fileId=file_id, mimeType=export_mime)
+    else:
+        ext = Path(name).suffix.lower()
+        if ext not in ALL_EXTENSIONS:
+            log.debug("Skipping unsupported file: %s", name)
+            return False
+        dest = staging_dir / name
+        log.info("Downloading %s", name)
+        request = service.files().get_media(fileId=file_id)
+
+    with open(dest, "wb") as fh:
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+    return True
+
+
+def load_drive_docs(staging_dir: Path) -> list[dict]:
+    """Load Drive documents: return list of {text, source} dicts."""
+    folder_id = os.environ.get("GDRIVE_FOLDER_ID")
+    if not folder_id:
+        return []
+
+    service = get_drive_service()
+    if not service:
+        return []
+
+    state = load_state()
+    files = list_drive_files(service, folder_id)
+    changed = [f for f in files if state.get(f["id"]) != f["modifiedTime"]]
+
+    if not changed:
+        log.info("Drive: no new or modified files")
+        return []
+
+    log.info("Drive: %d new/modified file(s)", len(changed))
+    new_state = dict(state)
+
+    for f in changed:
+        try:
+            if download_drive_file(service, f, staging_dir):
+                new_state[f["id"]] = f["modifiedTime"]
+        except Exception:
+            log.warning("Drive: failed to download %s — skipping", f["name"])
+
+    save_state(new_state)
+
+    docs = []
+    for f in staging_dir.iterdir():
+        if not f.is_file():
+            continue
+        text = extract_text(f)
+        if text:
+            docs.append({"text": text, "source": f"gdrive://{f.name}"})
+        else:
+            log.warning("Drive: no text extracted from %s", f.name)
+    return docs
+
+
+# ── Git source (adapted from vector-embedder's GitLoader) ───────────────────
+
+def load_git_docs(repos_dir: Path) -> list[dict]:
+    """Clone/pull git repos and extract text from matching files.
+
+    REPO_SOURCES is a JSON list of objects: [{"url": "...", "glob": "**/*.md"}, ...]
+    Shallow clones and incremental pull adapted from vector-embedder.
+    """
+    sources_json = os.environ.get("REPO_SOURCES", "")
+    if not sources_json:
+        return []
+
+    try:
+        sources = json.loads(sources_json)
+    except json.JSONDecodeError:
+        log.error("REPO_SOURCES is not valid JSON")
+        return []
+
+    docs = []
+    for source in sources:
+        url = source.get("url", "")
+        glob_pattern = source.get("glob", "**/*")
+        if not url:
+            continue
+
+        repo_name = url.rstrip("/").split("/")[-1].replace(".git", "")
+        repo_path = repos_dir / repo_name
+
+        try:
+            if repo_path.exists():
+                log.info("Git: pulling %s", repo_name)
+                result = subprocess.run(
+                    ["git", "-C", str(repo_path), "pull", "--ff-only"],
+                    capture_output=True, timeout=60,
+                )
+                if result.returncode != 0:
+                    log.warning("Git: pull failed for %s, re-cloning", repo_name)
+                    shutil.rmtree(repo_path)
+                    subprocess.run(
+                        ["git", "clone", "--depth", "1", url, str(repo_path)],
+                        check=True, capture_output=True, timeout=120,
+                    )
+            else:
+                log.info("Git: cloning %s (shallow)", repo_name)
+                subprocess.run(
+                    ["git", "clone", "--depth", "1", url, str(repo_path)],
+                    check=True, capture_output=True, timeout=120,
+                )
+        except Exception:
+            log.warning("Git: failed to clone/pull %s — skipping", url)
+            continue
+
+        for file_path in repo_path.glob(glob_pattern):
+            if not file_path.is_file():
+                continue
+            if file_path.suffix.lower() not in ALL_EXTENSIONS:
+                continue
+            try:
+                rel = file_path.relative_to(repo_path)
+                text = extract_text(file_path)
+                if text:
+                    docs.append({"text": text, "source": f"{url}@{rel}"})
+            except Exception:
+                log.warning("Git: failed to extract %s — skipping", file_path)
+
+    log.info("Git: loaded %d documents from %d repos", len(docs), len(sources))
+    return docs
+
+
+# ── Web source (adapted from vector-embedder's WebLoader) ───────────────────
+
+def load_web_docs() -> list[dict]:
+    """Fetch web pages and extract text.
+
+    WEB_SOURCES is a JSON list of URLs: ["https://example.com/docs", ...]
+    """
+    sources_json = os.environ.get("WEB_SOURCES", "")
+    if not sources_json:
+        return []
+
+    try:
+        urls = json.loads(sources_json)
+    except json.JSONDecodeError:
+        log.error("WEB_SOURCES is not valid JSON")
+        return []
+
+    import requests
+    from html.parser import HTMLParser
+
+    class TextExtractor(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.parts = []
+            self._skip = False
+
+        def handle_starttag(self, tag, attrs):
+            self._skip = tag in ("script", "style", "nav", "header", "footer")
+
+        def handle_endtag(self, tag):
+            if tag in ("script", "style", "nav", "header", "footer"):
+                self._skip = False
+
+        def handle_data(self, data):
+            if not self._skip:
+                text = data.strip()
+                if text:
+                    self.parts.append(text)
+
+    docs = []
+    for url in urls:
+        try:
+            log.info("Web: fetching %s", url)
+            resp = requests.get(url, timeout=30, headers={"User-Agent": "rag-watcher/1.0"})
+            resp.raise_for_status()
+
+            if "html" in resp.headers.get("content-type", "").lower():
+                parser = TextExtractor()
+                parser.feed(resp.text)
+                text = "\n\n".join(parser.parts)
+            else:
+                text = resp.text
+
+            if text.strip():
+                docs.append({"text": text, "source": url})
+            else:
+                log.warning("Web: no text extracted from %s", url)
+        except Exception:
+            log.warning("Web: failed to fetch %s — skipping", url)
+
+    log.info("Web: loaded %d documents from %d URLs", len(docs), len(urls))
+    return docs
 
 
 # ── Qdrant ingestion ─────────────────────────────────────────────────────────
@@ -234,61 +413,57 @@ def ensure_collection(qdrant, collection_name: str, vector_size: int):
         log.info("Created Qdrant collection: %s", collection_name)
 
 
-def ingest_files(staging_dir: Path) -> bool:
-    """Extract text from staged files, embed, and upsert into Qdrant."""
+def ingest_docs(docs: list[dict]) -> bool:
+    """Chunk documents, embed, and upsert into Qdrant."""
     from qdrant_client.models import PointStruct
 
-    all_files = [f for f in staging_dir.iterdir() if f.is_file()]
-    if not all_files:
-        log.warning("No files in staging directory")
+    if not docs:
+        log.info("No documents to ingest")
         return True
 
     collection_name = os.environ.get("QDRANT_COLLECTION", "documents")
     chunk_size = int(os.environ.get("CHUNK_SIZE", "1024"))
     chunk_overlap = int(os.environ.get("CHUNK_OVERLAP", "128"))
 
-    # Extract and chunk all documents
     all_chunks = []
-    for f in all_files:
-        text = extract_text(f)
-        if not text:
-            log.warning("No text extracted from %s — skipping", f.name)
-            continue
-        chunks = chunk_text(text, chunk_size, chunk_overlap)
-        for chunk in chunks:
-            all_chunks.append({"text": chunk, "source": f.name})
-        log.info("Extracted %d chunks from %s", len(chunks), f.name)
+    for doc in docs:
+        chunks = chunk_text(doc["text"], chunk_size, chunk_overlap)
+        total = len(chunks)
+        for i, chunk in enumerate(chunks):
+            all_chunks.append({
+                "text": chunk,
+                "source": doc["source"],
+                "chunk_id": i,
+                "chunk_total": total,
+            })
+        log.info("Chunked %s → %d chunks", doc["source"], total)
 
     if not all_chunks:
         log.warning("No text chunks to ingest")
         return True
 
-    log.info("Embedding %d chunks total...", len(all_chunks))
+    log.info("Embedding %d chunks...", len(all_chunks))
     embedder = get_embedder()
     texts = [c["text"] for c in all_chunks]
     vectors = embedder.encode(texts, show_progress_bar=True).tolist()
 
     qdrant = get_qdrant_client()
-    ensure_collection(qdrant, collection_name, len(vectors[0]))
 
-    # Delete existing points and re-ingest (full rebuild on each poll)
-    qdrant.delete_collection(collection_name)
+    # Full rebuild: drop and recreate collection
+    try:
+        qdrant.delete_collection(collection_name)
+    except Exception:
+        pass
     ensure_collection(qdrant, collection_name, len(vectors[0]))
 
     points = [
-        PointStruct(
-            id=str(uuid.uuid4()),
-            vector=vec,
-            payload=chunk,
-        )
+        PointStruct(id=str(uuid.uuid4()), vector=vec, payload=chunk)
         for vec, chunk in zip(vectors, all_chunks)
     ]
 
-    # Upsert in batches of 100
     batch_size = 100
     for i in range(0, len(points), batch_size):
-        batch = points[i : i + batch_size]
-        qdrant.upsert(collection_name=collection_name, points=batch)
+        qdrant.upsert(collection_name=collection_name, points=points[i : i + batch_size])
 
     log.info("Ingested %d chunks into Qdrant collection '%s'", len(points), collection_name)
     return True
@@ -296,67 +471,53 @@ def ingest_files(staging_dir: Path) -> bool:
 
 # ── Poll loop ────────────────────────────────────────────────────────────────
 
-def poll_once(service, folder_id: str, staging_dir: Path) -> None:
-    """Single poll iteration: check for changes, download, ingest into Qdrant."""
-    state = load_state()
-    files = list_files(service, folder_id)
-    changed = []
+def poll_once(staging_dir: Path, repos_dir: Path) -> None:
+    """Single poll iteration: gather docs from all sources, ingest into Qdrant."""
+    all_docs = []
 
-    for f in files:
-        fid = f["id"]
-        modified = f["modifiedTime"]
-        if state.get(fid) != modified:
-            changed.append(f)
+    # Google Drive
+    all_docs.extend(load_drive_docs(staging_dir))
 
-    if not changed:
-        log.info("No new or modified files")
+    # Git repos
+    all_docs.extend(load_git_docs(repos_dir))
+
+    # Web URLs
+    all_docs.extend(load_web_docs())
+
+    if not all_docs:
+        log.info("No documents to process from any source")
         return
 
-    log.info("Detected %d new/modified file(s)", len(changed))
+    log.info("Total: %d documents from all sources", len(all_docs))
 
-    downloaded = 0
-    new_state = dict(state)
-
-    for f in changed:
-        if download_file(service, f, staging_dir):
-            new_state[f["id"]] = f["modifiedTime"]
-            downloaded += 1
-
-    if downloaded == 0:
-        log.info("No downloadable files among changes")
-        save_state(new_state)
-        return
-
-    if ingest_files(staging_dir):
-        save_state(new_state)
+    if ingest_docs(all_docs):
         log.info("Qdrant updated — new documents available for RAG immediately")
     else:
-        log.warning("State not updated due to ingestion failure — will retry next poll")
+        log.warning("Ingestion failed — will retry next poll")
 
 
 def main() -> None:
-    folder_id = os.environ.get("GDRIVE_FOLDER_ID")
-    if not folder_id:
-        log.error("GDRIVE_FOLDER_ID is not set")
-        sys.exit(1)
-
     interval = int(os.environ.get("WATCH_INTERVAL_MINUTES", "15"))
     staging_dir = Path(os.environ.get("STAGING_DIR", "/tmp/rag-staging"))
+    repos_dir = Path(os.environ.get("REPOS_DIR", "/tmp/rag-repos"))
 
     staging_dir.mkdir(parents=True, exist_ok=True)
+    repos_dir.mkdir(parents=True, exist_ok=True)
 
-    log.info("Starting Drive RAG watcher")
-    log.info("  Folder ID:  %s", folder_id)
+    log.info("Starting RAG watcher")
     log.info("  Qdrant:     %s", os.environ.get("QDRANT_URL", "http://127.0.0.1:6333"))
     log.info("  Collection: %s", os.environ.get("QDRANT_COLLECTION", "documents"))
     log.info("  Interval:   %d min", interval)
-    log.info("  Staging:    %s", staging_dir)
-
-    service = get_drive_service()
+    if os.environ.get("GDRIVE_FOLDER_ID"):
+        log.info("  Drive:      folder %s", os.environ["GDRIVE_FOLDER_ID"])
+    if os.environ.get("REPO_SOURCES"):
+        log.info("  Git:        %s", os.environ["REPO_SOURCES"])
+    if os.environ.get("WEB_SOURCES"):
+        log.info("  Web:        %s", os.environ["WEB_SOURCES"])
 
     while True:
         try:
-            poll_once(service, folder_id, staging_dir)
+            poll_once(staging_dir, repos_dir)
         except Exception:
             log.exception("Poll cycle failed")
         time.sleep(interval * 60)

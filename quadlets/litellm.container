@@ -18,6 +18,7 @@ Environment=DATABASE_URL=postgresql://litellm:litellm@localhost:5432/litellm
 Environment=STORE_MODEL_IN_DB=True
 
 Network=host
+# Required: Debian-based image triggers SELinux execmem denial on Fedora 43
 SecurityLabelDisable=true
 
 Exec=--config /app/config.yaml --port 4000
