@@ -83,33 +83,22 @@ Available model aliases (all route to Qwen3.5-35B-A3B on :8080):
 | `code` | Completion, debugging, generation |
 | `fast` | Quick queries, drafting |
 
-## Hardware notes
+## Documentation
 
-**gfx1151 (AI Max+ 395):** ROCm 6.4.x in Fedora 43 has known page-fault issues on gfx1151. `HSA_OVERRIDE_GFX_VERSION=11.5.1` is set automatically by `./llm-stack.sh setup`. A fix is expected in ROCm 7.x (Fedora 44). If you hit errors, check `./llm-stack.sh logs model`.
+| Document | Description |
+|----------|-------------|
+| [Architecture](docs/architecture.md) | System design, data flow, component responsibilities, port map |
+| [Grounding](docs/grounding.md) | Corpus-preferring grounding rules, citation format, metadata schema, audit log |
+| [Operations](docs/operations.md) | Deployment, monitoring, troubleshooting, adding document sources, configuration reference |
 
-**Memory budget:** Qwen3.5-35B-A3B UD-Q4\_K\_XL uses ~22 GB VRAM. With a 64/64 BIOS split, this leaves ~42 GB of VRAM headroom for KV cache (131072 context, parallel 4) and ~62 GB of system RAM for applications. Do **not** set `LLAMA_HIP_UMA=1` — on the AI Max+ 395 with dedicated VRAM carved out in BIOS, it forces allocations into GTT (system RAM) instead of VRAM.
+### Architecture Decision Records
 
-**SELinux:** The ramalama quadlet requires `SecurityLabelDisable=true` because SELinux blocks `/dev/kfd` access in the user systemd context. `cmd_install` automatically runs `chcon -t container_ro_file_t -l s0` on all `.gguf` model files.
-
-**quay.io outages:** `pull-image` automatically falls back to `ghcr.io/ggml-org/llama.cpp:full-rocm` if quay.io is unreachable. quay.io status: https://status.redhat.com
-
-## Implementation notes
-
-**LiteLLM** uses `main-stable` (currently v1.82.3-stable.patch.2), backed by sclorg/postgresql-16-c9s. It is not pinned to a specific version tag.
-
-**Postgres** serves double duty: LiteLLM state and the RAG document store (chunks table). The document store uses upsert semantics on `(doc_id, chunk_id)` so re-ingestion is idempotent.
-
-**Qdrant** stores vectors with reference-only payloads `{doc_id, chunk_id, source, created_at}` — no document text. The collection uses int8 scalar quantization (quantile 0.99, always\_ram) to reduce vector memory footprint. Qdrant does not support adding quantization to an existing collection — recreate if migrating.
-
-**Reranker** uses BAAI/bge-reranker-v2-m3 (0.6B, Apache 2.0, multilingual) as a cross-encoder to score query-document pairs after vector retrieval. Configurable via `RERANKER_MODEL` env var; can be swapped to bge-reranker-v2.5-gemma2-lightweight or mxbai-rerank-large-v2. Disabled via `RERANKER_ENABLED=false`.
-
-**Open WebUI** is pinned to v0.8.6. It uses `DATABASE_URL=sqlite:////app/backend/data/webui.db` (not the postgres instance). It runs on port 3000 via `PORT=3000` because `Network=host` would otherwise conflict with ramalama on :8080.
-
-**Environment variables:** `OPENAI_API_KEY` and all shared secrets live in `env.example` / `~/.config/llm-stack/env`. Systemd does not expand `EnvironmentFile` vars inside `Environment=` lines, so all vars that need cross-referencing must be set directly in the env file.
-
-## AIMI (Chatterbox Labs / Red Hat)
-
-A stub service slot is reserved for the [AIMI](https://www.redhat.com/en/about/press-releases/red-hat-accelerates-ai-trust-and-security-chatterbox-labs-acquisition) guardrails platform once it becomes available via Red Hat channels. See the commented block in `configs/litellm-config.yaml`.
+| ADR | Decision |
+|-----|----------|
+| [001](docs/adr/001-live-qdrant-over-oci-images.md) | Live Qdrant over ramalama rag OCI images |
+| [002](docs/adr/002-reference-only-indexing.md) | Reference-only indexing — vectors in Qdrant, text in Postgres |
+| [003](docs/adr/003-corpus-preferring-grounding.md) | Corpus-preferring grounding with transparent fallback |
+| [004](docs/adr/004-ubi-container-strategy.md) | UBI container base images with SELinux enforcing |
 
 ## Acknowledgements
 

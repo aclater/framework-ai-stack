@@ -1,0 +1,231 @@
+# Operations guide
+
+## Service management
+
+All services run as rootless Podman containers under systemd user units.
+
+### Starting and stopping
+
+```bash
+# All inference services
+./llm-stack.sh up          # start all
+./llm-stack.sh down        # stop all
+./llm-stack.sh restart     # restart all
+./llm-stack.sh status      # show unit states
+
+# Individual services
+systemctl --user start ramalama
+systemctl --user stop rag-proxy
+systemctl --user restart qdrant
+systemctl --user restart rag-watcher
+```
+
+### Viewing logs
+
+```bash
+# Inference
+./llm-stack.sh logs model   # llama-server
+./llm-stack.sh logs proxy   # LiteLLM
+./llm-stack.sh logs webui   # Open WebUI
+
+# RAG pipeline
+journalctl --user -u rag-proxy -f
+journalctl --user -u rag-watcher -f
+journalctl --user -u qdrant -f
+
+# Audit log (grounding decisions, no text content)
+journalctl --user -u rag-proxy -f | grep '"grounding"'
+```
+
+### Service dependencies
+
+```
+postgres
+  ├── litellm (state store)
+  ├── rag-proxy (document store)
+  └── rag-watcher (document store)
+qdrant
+  ├── rag-proxy (vector search)
+  └── rag-watcher (vector upsert)
+ramalama
+  └── rag-proxy (model inference)
+```
+
+## Adding document sources
+
+### Google Drive
+
+1. Set `GDRIVE_FOLDER_ID` in `~/.config/llm-stack/env`
+2. Place the service account key at `~/.config/ramalama/gdrive-sa.json`
+3. Share the Drive folder with the service account email (Viewer access)
+4. Restart the watcher: `systemctl --user restart rag-watcher`
+
+See `rag-watcher/setup.sh` for interactive setup.
+
+### Git repositories
+
+Add to `~/.config/llm-stack/env`:
+
+```bash
+REPO_SOURCES='[{"url": "https://github.com/org/repo", "glob": "**/*.md"}, {"url": "https://github.com/org/other", "glob": "docs/**/*.rst"}]'
+```
+
+The watcher will shallow-clone each repo and pull incrementally on subsequent polls. Only files matching the glob pattern are ingested.
+
+### Web URLs
+
+Add to `~/.config/llm-stack/env`:
+
+```bash
+WEB_SOURCES='["https://example.com/docs/page1", "https://example.com/docs/page2"]'
+```
+
+HTML is fetched and text is extracted (script/style/nav tags are stripped).
+
+### Forcing a re-ingest
+
+Delete the state file and restart:
+
+```bash
+rm ~/.local/share/ramalama/rag-state.json
+systemctl --user restart rag-watcher
+```
+
+This triggers a full re-download and re-embed of all documents.
+
+## Monitoring
+
+### Qdrant collection status
+
+```bash
+curl -s http://127.0.0.1:6333/collections/documents | python3 -m json.tool
+```
+
+Key fields: `points_count`, `status` (should be `green`).
+
+### Document store chunk count
+
+```bash
+podman exec postgres psql -U litellm -c "SELECT COUNT(*) FROM chunks;"
+```
+
+### RAG proxy health
+
+```bash
+curl -s http://127.0.0.1:8090/v1/models
+```
+
+### Grounding audit analysis
+
+Count grounding modes over the last hour:
+
+```bash
+journalctl --user -u rag-proxy --since "1 hour ago" --no-pager \
+  | grep '"grounding"' \
+  | python3 -c "
+import sys, json, collections
+modes = collections.Counter()
+for line in sys.stdin:
+    try:
+        # Extract JSON from log line
+        start = line.index('{')
+        entry = json.loads(line[start:])
+        modes[entry['grounding']] += 1
+    except (ValueError, json.JSONDecodeError, KeyError):
+        pass
+for mode, count in modes.most_common():
+    print(f'{mode}: {count}')
+"
+```
+
+Many `general` grounding entries indicate corpus gaps — the documents don't cover what users are asking.
+
+### Memory usage
+
+```bash
+# System overview
+free -h
+
+# Per-container
+podman stats --no-stream
+
+# GPU / VRAM
+cat /sys/class/drm/card1/device/mem_info_vram_used
+cat /sys/class/drm/card1/device/mem_info_gtt_used
+```
+
+## Troubleshooting
+
+### Model not responding
+
+Check if llama-server is loaded:
+
+```bash
+podman logs ramalama 2>&1 | tail -5
+# Should show: "main: model loaded" and "srv  update_slots: all slots are idle"
+```
+
+If the model is still loading, wait — Qwen3.5-35B-A3B takes ~15 seconds to load.
+
+### RAG proxy returning empty responses
+
+1. Check if Qdrant has data: `curl -s http://127.0.0.1:6333/collections/documents`
+2. Check if the docstore has chunks: `podman exec postgres psql -U litellm -c "SELECT COUNT(*) FROM chunks;"`
+3. Check proxy logs for errors: `journalctl --user -u rag-proxy --since "5 min ago"`
+
+If Qdrant is empty, the watcher hasn't run yet. Force it: `systemctl --user restart rag-watcher`
+
+### Reranker cold start latency
+
+The first request after a rag-proxy restart takes 30-40 seconds while the cross-encoder model downloads and loads. Subsequent requests are fast (~100ms for reranking). The health check has a 120-second startup grace period to accommodate this.
+
+### SELinux denials
+
+UBI10 and UBI9 containers run with SELinux enforcing. Upstream Debian-based images (qdrant, litellm) require `SecurityLabelDisable=true` due to `execmem` denials. If you see:
+
+```
+cannot apply additional memory protection after relocation: Permission denied
+```
+
+This is a Debian binary incompatibility with Fedora 43's SELinux policy, not a misconfiguration. The workaround is `SecurityLabelDisable=true` with a comment in the quadlet.
+
+### IPv6 connection issues
+
+Some containers bind to `0.0.0.0` (IPv4 only). If `curl http://localhost:...` fails with "Connection reset by peer", try `http://127.0.0.1:...` instead.
+
+### High idle GPU usage
+
+If `ramalama` shows >100% CPU at idle, check that `GPU_MAX_HW_QUEUES=1` is set in the container environment. This is a gfx1151 busy-spin mitigation.
+
+## Configuration reference
+
+All configuration is via environment variables in `~/.config/llm-stack/env` and the individual quadlet files.
+
+### RAG proxy
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MODEL_URL` | `http://127.0.0.1:8080` | Model endpoint |
+| `QDRANT_URL` | `http://127.0.0.1:6333` | Qdrant endpoint |
+| `QDRANT_COLLECTION` | `documents` | Collection name |
+| `EMBED_MODEL` | `sentence-transformers/all-mpnet-base-v2` | Embedding model |
+| `RAG_TOP_K` | `20` | Qdrant candidate count |
+| `RERANKER_ENABLED` | `true` | Enable/disable reranker |
+| `RERANKER_MODEL` | `BAAI/bge-reranker-v2-m3` | Cross-encoder model |
+| `RERANKER_TOP_N` | `5` | Results after reranking |
+| `RERANKER_DEVICE` | `cpu` | `cpu`, `cuda`, or auto-detect |
+| `THINKING_BUDGET` | `1024` | Token budget for model reasoning |
+| `DOCSTORE_BACKEND` | `postgres` | `postgres` or `sqlite` |
+| `DOCSTORE_URL` | `postgresql://...` | Postgres connection string |
+
+### RAG watcher
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GDRIVE_FOLDER_ID` | — | Google Drive folder to watch |
+| `REPO_SOURCES` | — | JSON list of git repos |
+| `WEB_SOURCES` | — | JSON list of web URLs |
+| `WATCH_INTERVAL_MINUTES` | `15` | Poll interval |
+| `CHUNK_SIZE` | `1024` | Max chunk size (characters) |
+| `CHUNK_OVERLAP` | `128` | Overlap between chunks |
+| `EMBED_MODEL` | `sentence-transformers/all-mpnet-base-v2` | Must match proxy |
