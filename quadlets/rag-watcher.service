@@ -1,0 +1,22 @@
+# ~/.config/containers/systemd/rag-watcher.service
+# Google Drive RAG watcher — polls a Drive folder and rebuilds RAG OCI images
+# Runs on the host (not containerized) so it can call ramalama rag directly.
+
+[Unit]
+Description=Google Drive RAG watcher
+After=local-fs.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/llm-stack/env
+Environment=GOOGLE_APPLICATION_CREDENTIALS=%h/.config/ramalama/gdrive-sa.json
+Environment=STAGING_DIR=%h/.local/share/ramalama/rag-staging
+ExecStartPre=/bin/bash -c 'test -d %h/git/framework-ai-stack/rag-watcher/.venv || python3 -m venv %h/git/framework-ai-stack/rag-watcher/.venv'
+ExecStartPre=%h/git/framework-ai-stack/rag-watcher/.venv/bin/pip install --quiet -r %h/git/framework-ai-stack/rag-watcher/requirements.txt
+ExecStart=%h/git/framework-ai-stack/rag-watcher/.venv/bin/python %h/git/framework-ai-stack/rag-watcher/rag-watcher.py
+Restart=on-failure
+RestartSec=30s
+
+[Install]
+WantedBy=default.target
