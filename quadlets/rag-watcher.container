@@ -21,6 +21,8 @@ Environment=STAGING_DIR=/staging
 Environment=QDRANT_URL=http://host.containers.internal:6333
 Environment=QDRANT_COLLECTION=documents
 Environment=EMBED_MODEL=sentence-transformers/all-mpnet-base-v2
+Environment=DOCSTORE_BACKEND=postgres
+Environment=DOCSTORE_URL=postgresql://litellm:litellm@host.containers.internal:5432/litellm
 
 Network=host
 

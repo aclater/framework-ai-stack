@@ -35,6 +35,7 @@ from reranker import rerank
 # Globals initialized at startup
 qdrant: QdrantClient = None
 embedder: SentenceTransformer = None
+docstore = None
 
 SYSTEM_PROMPT_TEMPLATE = """You are a helpful assistant. Use the following document excerpts to answer the user's question. If the excerpts don't contain relevant information, say so and answer from your general knowledge.
 
@@ -59,11 +60,16 @@ def startup():
 
     log.info("Loading embedding model: %s", EMBED_MODEL)
     embedder = SentenceTransformer(EMBED_MODEL)
+
+    global docstore
+    from docstore import create_docstore
+    docstore = create_docstore()
+
     log.info("RAG proxy ready — forwarding to %s", MODEL_URL)
 
 
 def search_qdrant(query: str) -> list[dict]:
-    """Embed the query and search Qdrant for candidate document chunks."""
+    """Embed the query and search Qdrant for reference payloads."""
     try:
         collections = [c.name for c in qdrant.get_collections().collections]
         if COLLECTION_NAME not in collections:
@@ -80,15 +86,50 @@ def search_qdrant(query: str) -> list[dict]:
         if not results.points:
             return []
 
-        return [point.payload for point in results.points if point.payload.get("text")]
+        return [point.payload for point in results.points if point.payload.get("doc_id")]
     except Exception:
         log.exception("Qdrant search failed")
         return []
 
 
+def hydrate_results(refs: list[dict]) -> list[dict]:
+    """Batch-hydrate Qdrant reference payloads from the document store.
+
+    Each ref has {doc_id, chunk_id, source, created_at}. We look up the
+    full chunk text via a single batched docstore query and merge it in.
+    Orphaned vectors (chunk missing from docstore) are excluded with a
+    warning — they don't abort the query.
+    """
+    if not refs:
+        return []
+
+    lookup_keys = [(r["doc_id"], r["chunk_id"]) for r in refs]
+    texts = docstore.get_chunks(lookup_keys)
+
+    hydrated = []
+    for ref in refs:
+        key = (ref["doc_id"], ref["chunk_id"])
+        text = texts.get(key)
+        if text is None:
+            log.warning("Orphaned vector: doc_id=%s chunk_id=%d — excluding from results", ref["doc_id"], ref["chunk_id"])
+            continue
+        hydrated.append({
+            "text": text,
+            "source": ref.get("source", "unknown"),
+            "doc_id": ref["doc_id"],
+            "chunk_id": ref["chunk_id"],
+        })
+
+    return hydrated
+
+
 def search_context(query: str) -> str:
-    """Search Qdrant, rerank, and format as context string for the LLM."""
-    candidates = search_qdrant(query)
+    """Search Qdrant, hydrate from docstore, rerank, and format as context."""
+    refs = search_qdrant(query)
+    if not refs:
+        return ""
+
+    candidates = hydrate_results(refs)
     if not candidates:
         return ""
 

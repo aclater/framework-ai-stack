@@ -3,3 +3,4 @@ uvicorn
 httpx
 qdrant-client
 sentence-transformers
+psycopg2-binary

@@ -30,6 +30,10 @@ Environment=EMBED_MODEL=sentence-transformers/all-mpnet-base-v2
 Environment=RAG_TOP_K=20
 Environment=RAG_PROXY_PORT=8090
 
+# Document store — hydrates chunk text from Postgres at query time
+Environment=DOCSTORE_BACKEND=postgres
+Environment=DOCSTORE_URL=postgresql://litellm:litellm@host.containers.internal:5432/litellm
+
 # Reranker configuration
 Environment=RERANKER_ENABLED=true
 Environment=RERANKER_MODEL=BAAI/bge-reranker-v2-m3
