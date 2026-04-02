@@ -1,24 +1,45 @@
 # ~/.config/containers/systemd/rag-proxy.container
-# RAG proxy — searches Qdrant and injects document context into chat completions
+# RAG proxy — searches Qdrant, reranks with cross-encoder, injects context
 # Managed by: systemctl --user [start|stop|restart|status] rag-proxy
 
 [Unit]
-Description=RAG proxy (Qdrant search + context injection)
+Description=RAG proxy (Qdrant search + reranker + context injection)
 After=local-fs.target network-online.target qdrant.service
 Wants=network-online.target
 Requires=qdrant.service
 
 [Container]
-Image=registry.access.redhat.com/ubi10/python-312-minimal
+# UBI9 Python 3.11 pinned to 2026-04-01 build
+Image=registry.access.redhat.com/ubi9/python-311@sha256:8fb94e142e1093b82ca64b334264a5da8e874567d64ce4b6d614f86da3e38813
 
 Volume=%h/git/framework-ai-stack/rag-proxy:/app:ro,Z
+
+# Writable model cache for sentence-transformers and cross-encoder models
+Volume=rag-proxy-model-cache:/opt/app-root/src/.cache:Z
+
+# NOTE: ReadOnly=true is not compatible with pip-at-runtime installs.
+# To enable read-only rootfs, build a custom image with deps pre-installed.
+
+# Run as non-root user (default in UBI Python images, UID 1001)
+User=1001
 
 Environment=MODEL_URL=http://host.containers.internal:8080
 Environment=QDRANT_URL=http://host.containers.internal:6333
 Environment=QDRANT_COLLECTION=documents
 Environment=EMBED_MODEL=sentence-transformers/all-mpnet-base-v2
-Environment=RAG_TOP_K=10
+Environment=RAG_TOP_K=20
 Environment=RAG_PROXY_PORT=8090
+
+# Reranker configuration
+Environment=RERANKER_ENABLED=true
+Environment=RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+Environment=RERANKER_DEVICE=cpu
+Environment=RERANKER_TOP_N=5
+
+# HuggingFace cache location (inside the writable volume)
+Environment=HF_HOME=/opt/app-root/src/.cache/huggingface
+Environment=TRANSFORMERS_CACHE=/opt/app-root/src/.cache/huggingface
+Environment=PYTHONPATH=/app
 
 Network=host
 
@@ -27,10 +48,21 @@ Exec=bash -c "pip install --quiet -r /app/requirements.txt && python3 /app/rag-p
 ContainerName=rag-proxy
 PublishPort=8090:8090
 
+# Health check — proxy should respond to any request
+HealthCmd=python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/v1/models')"
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=120s
+
 [Service]
 Restart=on-failure
 RestartSec=10s
 TimeoutStartSec=300s
+
+# Resource limits
+MemoryMax=4G
+CPUQuota=200%
 
 [Install]
 WantedBy=default.target
