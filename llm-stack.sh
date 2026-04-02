@@ -195,7 +195,7 @@ cmd_setup() {
     ok "Copied litellm-config.yaml"
 
     if ! grep -q 'HSA_OVERRIDE_GFX_VERSION' "$HOME/.bashrc" 2>/dev/null; then
-        printf '\n# LLM Stack — AMD AI Max+ 395 ROCm\nexport HSA_OVERRIDE_GFX_VERSION=11.5.1\nexport LLAMA_HIP_UMA=1\n' \
+        printf '\n# LLM Stack — AMD AI Max+ 395 ROCm\nexport HSA_OVERRIDE_GFX_VERSION=11.5.1\n' \
             >> "$HOME/.bashrc"
         ok "Added ROCm env vars to ~/.bashrc"
     else

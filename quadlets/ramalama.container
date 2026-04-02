@@ -15,8 +15,6 @@ AddDevice=-/dev/kfd
 AddDevice=-/dev/dri
 SecurityLabelDisable=true
 
-# Unified memory flag — critical for AI Max+ 395 iGPU
-Environment=LLAMA_HIP_UMA=1
 # GFX version override for AI Max+ 395; remove once ROCm ships gfx1151 support
 Environment=HSA_OVERRIDE_GFX_VERSION=11.5.1
 Environment=AMD_LOG_LEVEL=0
