@@ -1,4 +1,4 @@
-<svg width="100%" viewBox="0 0 780 740" xmlns="http://www.w3.org/2000/svg" style="font-family:system-ui,sans-serif;background:transparent">
+<svg width="100%" viewBox="0 0 780 660" xmlns="http://www.w3.org/2000/svg" style="font-family:system-ui,sans-serif;background:transparent">
 
 <defs>
   <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -91,12 +91,14 @@
 <line x1="640" y1="160" x2="640" y2="190" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
 <text class="tl muted" x="640" y="177" text-anchor="middle" dominant-baseline="central">text</text>
 
-<!-- RAG proxy box (taller to show pipeline) -->
-<rect x="30" y="192" width="360" height="100" rx="8" stroke-width="0.5" class="c-coral-fill"/>
-<text class="th c-coral-text" x="210" y="214" text-anchor="middle" dominant-baseline="central">RAG proxy</text>
-<text class="ts c-coral-text" x="210" y="234" text-anchor="middle" dominant-baseline="central">1. Qdrant vector search (20 candidates)</text>
-<text class="ts c-coral-text" x="210" y="252" text-anchor="middle" dominant-baseline="central">2. Docstore hydration (batch text lookup)</text>
-<text class="ts c-coral-text" x="210" y="270" text-anchor="middle" dominant-baseline="central">3. Cross-encoder reranker → top 5</text>
+<!-- RAG proxy box (taller to show full pipeline) -->
+<rect x="30" y="192" width="360" height="118" rx="8" stroke-width="0.5" class="c-coral-fill"/>
+<text class="th c-coral-text" x="210" y="210" text-anchor="middle" dominant-baseline="central">RAG proxy</text>
+<text class="ts c-coral-text" x="210" y="228" text-anchor="middle" dominant-baseline="central">1. Qdrant vector search (20 candidates)</text>
+<text class="ts c-coral-text" x="210" y="244" text-anchor="middle" dominant-baseline="central">2. Docstore hydration (batch text lookup)</text>
+<text class="ts c-coral-text" x="210" y="260" text-anchor="middle" dominant-baseline="central">3. Cross-encoder reranker → top 5</text>
+<text class="ts c-coral-text" x="210" y="276" text-anchor="middle" dominant-baseline="central">4. Grounding prompt + [doc_id:chunk_id] labels</text>
+<text class="ts c-coral-text" x="210" y="292" text-anchor="middle" dominant-baseline="central">5. Post-response: cite → validate → classify → audit</text>
 
 <!-- Qdrant -->
 <rect x="420" y="192" width="165" height="60" rx="8" stroke-width="0.5" class="c-blue-fill"/>
@@ -115,45 +117,45 @@
 <line x1="390" y1="244" x2="593" y2="244" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
 
 <!-- Arrow RAG proxy → model -->
-<line x1="210" y1="292" x2="210" y2="328" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
-<text class="ts muted" x="225" y="312" dominant-baseline="central">:8080</text>
+<line x1="210" y1="310" x2="210" y2="346" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
+<text class="ts muted" x="225" y="330" dominant-baseline="central">:8080</text>
 
 <!-- RamaLama dashed container -->
-<rect x="24" y="314" width="378" height="120" rx="6" fill="none" stroke-dasharray="4 3" stroke-width="0.5" stroke="#888780"/>
-<text class="tl muted" x="37" y="307" dominant-baseline="central">RamaLama · ROCm · q8_0 KV cache</text>
+<rect x="24" y="332" width="378" height="120" rx="6" fill="none" stroke-dasharray="4 3" stroke-width="0.5" stroke="#888780"/>
+<text class="tl muted" x="37" y="325" dominant-baseline="central">RamaLama · ROCm · q8_0 KV cache</text>
 
 <!-- Qwen model -->
-<rect x="42" y="328" width="344" height="92" rx="8" stroke-width="0.5" class="c-teal-fill"/>
-<text class="th c-teal-text" x="214" y="352" text-anchor="middle" dominant-baseline="central">Qwen3.5-35B-A3B</text>
-<text class="ts c-teal-text" x="214" y="374" text-anchor="middle" dominant-baseline="central">MoE · 3B active params · ~22 GB</text>
-<text class="ts c-teal-text" x="214" y="394" text-anchor="middle" dominant-baseline="central">thinking + non-thinking · ctx 131072</text>
+<rect x="42" y="346" width="344" height="92" rx="8" stroke-width="0.5" class="c-teal-fill"/>
+<text class="th c-teal-text" x="214" y="370" text-anchor="middle" dominant-baseline="central">Qwen3.5-35B-A3B</text>
+<text class="ts c-teal-text" x="214" y="392" text-anchor="middle" dominant-baseline="central">MoE · 3B active params · ~22 GB</text>
+<text class="ts c-teal-text" x="214" y="412" text-anchor="middle" dominant-baseline="central">thinking + non-thinking · ctx 131072</text>
 
 <!-- Arrow model → GPU -->
-<line x1="210" y1="434" x2="210" y2="464" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
+<line x1="210" y1="452" x2="210" y2="482" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
 
 <!-- GPU layer -->
-<rect x="30" y="466" width="730" height="56" rx="8" stroke-width="0.5" class="c-green-fill"/>
-<text class="th c-green-text" x="395" y="488" text-anchor="middle" dominant-baseline="central">AMD Ryzen AI Max+ 395 · gfx1151 · ROCm</text>
-<text class="ts c-green-text" x="395" y="508" text-anchor="middle" dominant-baseline="central">64 GB VRAM + 64 GB GTT · 62 GB system RAM</text>
+<rect x="30" y="484" width="730" height="56" rx="8" stroke-width="0.5" class="c-green-fill"/>
+<text class="th c-green-text" x="395" y="506" text-anchor="middle" dominant-baseline="central">AMD Ryzen AI Max+ 395 · gfx1151 · ROCm</text>
+<text class="ts c-green-text" x="395" y="526" text-anchor="middle" dominant-baseline="central">64 GB VRAM + 64 GB GTT · 62 GB system RAM</text>
 
 <!-- Separator -->
-<line x1="30" y1="542" x2="760" y2="542" stroke-dasharray="3 3" stroke-width="0.5" stroke="#888780"/>
+<line x1="30" y1="560" x2="760" y2="560" stroke-dasharray="3 3" stroke-width="0.5" stroke="#888780"/>
 
 <!-- Bottom row -->
-<rect x="30"  y="556" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
-<text class="th c-gray-text" x="115" y="577" text-anchor="middle" dominant-baseline="central">Open WebUI</text>
-<text class="ts c-gray-text" x="115" y="596" text-anchor="middle" dominant-baseline="central">v0.8.6 · :3000</text>
+<rect x="30"  y="574" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
+<text class="th c-gray-text" x="115" y="595" text-anchor="middle" dominant-baseline="central">Open WebUI</text>
+<text class="ts c-gray-text" x="115" y="614" text-anchor="middle" dominant-baseline="central">v0.8.6 · :3000</text>
 
-<rect x="215" y="556" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
-<text class="th c-gray-text" x="300" y="577" text-anchor="middle" dominant-baseline="central">UBI9 · UBI10</text>
-<text class="ts c-gray-text" x="300" y="596" text-anchor="middle" dominant-baseline="central">SELinux enforcing</text>
+<rect x="215" y="574" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
+<text class="th c-gray-text" x="300" y="595" text-anchor="middle" dominant-baseline="central">UBI9 · UBI10</text>
+<text class="ts c-gray-text" x="300" y="614" text-anchor="middle" dominant-baseline="central">SELinux enforcing</text>
 
-<rect x="400" y="556" width="175" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
-<text class="th c-gray-text" x="487" y="577" text-anchor="middle" dominant-baseline="central">Fedora 43</text>
-<text class="ts c-gray-text" x="487" y="596" text-anchor="middle" dominant-baseline="central">Podman quadlets</text>
+<rect x="400" y="574" width="175" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
+<text class="th c-gray-text" x="487" y="595" text-anchor="middle" dominant-baseline="central">Fedora 43</text>
+<text class="ts c-gray-text" x="487" y="614" text-anchor="middle" dominant-baseline="central">Podman quadlets</text>
 
-<rect x="590" y="556" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
-<text class="th c-gray-text" x="675" y="577" text-anchor="middle" dominant-baseline="central">systemd</text>
-<text class="ts c-gray-text" x="675" y="596" text-anchor="middle" dominant-baseline="central">rootless user services</text>
+<rect x="590" y="574" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
+<text class="th c-gray-text" x="675" y="595" text-anchor="middle" dominant-baseline="central">systemd</text>
+<text class="ts c-gray-text" x="675" y="614" text-anchor="middle" dominant-baseline="central">rootless user services</text>
 
 </svg>
