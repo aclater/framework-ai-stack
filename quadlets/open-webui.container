@@ -9,7 +9,7 @@ Wants=network-online.target
 [Container]
 Image=ghcr.io/open-webui/open-webui:v0.8.6
 
-Volume=open-webui-data.volume:/app/backend/data
+Volume=open-webui-data.volume:/app/backend/data:Z
 
 # Load WEBUI_SECRET_KEY and LITELLM_MASTER_KEY from env file.
 # Override DATABASE_URL: the env file contains the litellm postgres URL

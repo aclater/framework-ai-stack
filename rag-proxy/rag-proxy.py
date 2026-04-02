@@ -81,6 +81,13 @@ def startup():
     log.info("RAG proxy ready — forwarding to %s (thinking_budget=%d)", MODEL_URL, THINKING_BUDGET)
 
 
+@app.on_event("shutdown")
+def shutdown():
+    if qdrant:
+        qdrant.close()
+    log.info("RAG proxy shut down")
+
+
 # ── Retrieval pipeline ───────────────────────────────────────────────────────
 
 def search_qdrant(query: str) -> list[dict]:
@@ -179,7 +186,7 @@ def process_chat_request(body: dict) -> tuple[dict, dict]:
     # candidates that were retrieved, not just the reranked top-N,
     # because the model sees only the top-N but we validate against
     # the full retrieved set to catch hallucinated citations
-    retrieved_set = {(c["doc_id"], c["chunk_id"]) for c in ranked}
+    retrieved_set = {(c["doc_id"], c["chunk_id"]) for c in all_candidates}
 
     # Format context with citation-friendly labels
     context = format_context(ranked)
@@ -290,7 +297,10 @@ def process_response(response_data: dict, ctx: dict) -> dict:
 @app.api_route("/v1/chat/completions", methods=["POST"])
 async def chat_completions(request: Request):
     """Intercept chat completions, inject grounded RAG context, forward to model."""
-    body = await request.json()
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
     body, retrieval_ctx = process_chat_request(body)
 
     stream = body.get("stream", False)
@@ -319,10 +329,20 @@ async def chat_completions(request: Request):
                 f"{MODEL_URL}/v1/chat/completions",
                 json=body,
             )
-        response_data = resp.json()
+        try:
+            resp.raise_for_status()
+            response_data = resp.json()
+        except httpx.HTTPStatusError as e:
+            log.error("Model returned %d: %s", e.response.status_code, e.response.text[:200])
+            return JSONResponse({"error": str(e)}, status_code=e.response.status_code)
         # Post-process: validate citations, classify grounding, audit
         response_data = process_response(response_data, retrieval_ctx)
         return JSONResponse(content=response_data)
+
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
@@ -336,7 +356,12 @@ async def proxy_passthrough(request: Request, path: str):
             content=body,
             headers={k: v for k, v in request.headers.items() if k.lower() != "host"},
         )
-        return resp.json()
+        try:
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as e:
+            log.error("Passthrough %s returned %d", path, e.response.status_code)
+            return JSONResponse({"error": str(e)}, status_code=e.response.status_code)
 
 
 if __name__ == "__main__":

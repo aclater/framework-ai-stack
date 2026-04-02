@@ -10,7 +10,7 @@ clients → LiteLLM (:4000) → RAG proxy (:8090) → model (:8080)
                                   |
                           docstore hydration (Postgres :5432)
                                   |
-                          reranker (bge-reranker-v2-m3)
+                          reranker (MiniLM-L-6-v2)
                                   |
                           grounding (citation labels + system prompt)
                                   |

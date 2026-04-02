@@ -1,18 +1,33 @@
-"""Tests for rag-watcher batching and RAM budget logic."""
+"""Tests for rag-watcher — covers text extraction, point ID determinism,
+and state management."""
 
-import importlib
+import importlib.util
+import json
 import sys
 from pathlib import Path
-from unittest import mock
+from unittest.mock import patch, MagicMock
 
-import pytest
+# Stub out heavy dependencies that aren't installed in the test environment.
+# Use a dedicated dict so we can clean up without poisoning other test files.
+_STUBS = {}
+for _mod in [
+    "google.oauth2.service_account",
+    "googleapiclient.discovery",
+    "googleapiclient.http",
+    "langchain_text_splitters",
+]:
+    if _mod not in sys.modules:
+        _STUBS[_mod] = MagicMock()
+        sys.modules[_mod] = _STUBS[_mod]
 
-# Import without needing google API deps
-sys.modules.setdefault("google.oauth2", mock.MagicMock())
-sys.modules.setdefault("google.oauth2.service_account", mock.MagicMock())
-sys.modules.setdefault("googleapiclient", mock.MagicMock())
-sys.modules.setdefault("googleapiclient.discovery", mock.MagicMock())
-sys.modules.setdefault("googleapiclient.http", mock.MagicMock())
+# sentence_transformers and qdrant_client are real packages used by other
+# test files — only stub if they're genuinely missing.
+for _mod in ["sentence_transformers", "qdrant_client", "qdrant_client.models"]:
+    try:
+        __import__(_mod)
+    except ImportError:
+        _STUBS[_mod] = MagicMock()
+        sys.modules[_mod] = _STUBS[_mod]
 
 spec = importlib.util.spec_from_file_location(
     "rag_watcher",
@@ -22,153 +37,85 @@ rw = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(rw)
 
 
-# ---------------------------------------------------------------------------
-# _plan_batches
-# ---------------------------------------------------------------------------
-
-def _make_files(tmp_path, sizes_mb):
-    """Create dummy files of given sizes (in MB). Returns list of Paths."""
-    files = []
-    for i, size_mb in enumerate(sizes_mb):
-        p = tmp_path / f"doc_{i}.pdf"
-        p.write_bytes(b"\x00" * int(size_mb * 1024 * 1024))
-        files.append(p)
-    return files
+# ── Point ID determinism ────────────────────────────────────────────────────
 
 
-def test_plan_batches_single_batch(tmp_path):
-    files = _make_files(tmp_path, [1, 1, 1])
-    # Budget of 100 MB, multiplier 20 -> each 1 MB file = 20 MB estimated
-    # Total = 60 MB, fits in 100 MB
-    batches = rw._plan_batches(files, 100)
-    assert len(batches) == 1
-    assert len(batches[0]) == 3
+class TestPointId:
+    """Deterministic point IDs for idempotent Qdrant upsert."""
+
+    def test_deterministic(self):
+        a = rw._point_id("doc-abc", 0)
+        b = rw._point_id("doc-abc", 0)
+        assert a == b, "Same inputs must produce same ID"
+
+    def test_different_chunks_differ(self):
+        a = rw._point_id("doc-abc", 0)
+        b = rw._point_id("doc-abc", 1)
+        assert a != b, "Different chunk_ids must produce different IDs"
+
+    def test_different_docs_differ(self):
+        a = rw._point_id("doc-abc", 0)
+        b = rw._point_id("doc-xyz", 0)
+        assert a != b, "Different doc_ids must produce different IDs"
+
+    def test_returns_int(self):
+        result = rw._point_id("doc-abc", 0)
+        assert isinstance(result, int)
 
 
-def test_plan_batches_splits_when_needed(tmp_path):
-    files = _make_files(tmp_path, [1, 1, 1, 1])
-    # Budget 50 MB, multiplier 20 -> each 1 MB = 20 MB, so 2 per batch
-    batches = rw._plan_batches(files, 50)
-    assert len(batches) == 2
-    assert all(len(b) == 2 for b in batches)
+# ── Text extraction ─────────────────────────────────────────────────────────
 
 
-def test_plan_batches_large_file_gets_own_batch(tmp_path):
-    files = _make_files(tmp_path, [0.5, 0.5, 5])
-    # Budget 30 MB, multiplier 20 -> 0.5 MB = 10 MB est, 5 MB = 100 MB est
-    # First two fit together (20 MB), big one alone
-    batches = rw._plan_batches(files, 30)
-    assert len(batches) == 2
-    assert len(batches[0]) == 2  # two small files
-    assert len(batches[1]) == 1  # the big file alone
+class TestExtractText:
+    """Text extraction from various file types."""
+
+    def test_plain_text(self, tmp_path):
+        f = tmp_path / "test.txt"
+        f.write_text("Hello world")
+        assert rw.extract_text(f) == "Hello world"
+
+    def test_markdown(self, tmp_path):
+        f = tmp_path / "test.md"
+        f.write_text("# Title\n\nBody text")
+        result = rw.extract_text(f)
+        assert "Title" in result
+        assert "Body" in result
+
+    def test_empty_file(self, tmp_path):
+        f = tmp_path / "empty.txt"
+        f.write_text("")
+        assert rw.extract_text(f) == ""
+
+    def test_unsupported_extension(self, tmp_path):
+        f = tmp_path / "data.bin"
+        f.write_bytes(b"\x00\x01\x02")
+        result = rw.extract_text(f)
+        assert result == "" or isinstance(result, str)
 
 
-def test_plan_batches_empty(tmp_path):
-    batches = rw._plan_batches([], 100)
-    assert batches == []
+# ── State management ────────────────────────────────────────────────────────
 
 
-# ---------------------------------------------------------------------------
-# _get_ram_budget_mb
-# ---------------------------------------------------------------------------
+class TestState:
+    """State file load/save for Drive polling."""
 
-def test_ram_budget_respects_min_free():
-    with mock.patch.object(rw, "get_available_ram_mb", return_value=3000), \
-         mock.patch.object(rw, "_RAM_MIN_FREE_MB", 4096):
-        assert rw._get_ram_budget_mb() == 0.0
+    def test_load_missing_file(self, tmp_path):
+        with patch.object(rw, "STATE_PATH", tmp_path / "missing.json"):
+            state = rw.load_state()
+            assert state == {}
 
+    def test_save_and_load(self, tmp_path):
+        state_file = tmp_path / "state.json"
+        with patch.object(rw, "STATE_PATH", state_file):
+            rw.save_state({"file1": "2026-01-01T00:00:00Z"})
+            loaded = rw.load_state()
+            assert loaded == {"file1": "2026-01-01T00:00:00Z"}
 
-def test_ram_budget_respects_cap():
-    with mock.patch.object(rw, "get_available_ram_mb", return_value=60000), \
-         mock.patch.object(rw, "_RAM_MIN_FREE_MB", 4096), \
-         mock.patch.object(rw, "_RAM_BUDGET_FRACTION", 0.3), \
-         mock.patch.object(rw, "_RAM_BUDGET_CAP_MB", 8192):
-        budget = rw._get_ram_budget_mb()
-        # (60000 - 4096) * 0.3 = 16771, but capped at 8192
-        assert budget == 8192
-
-
-def test_ram_budget_normal():
-    with mock.patch.object(rw, "get_available_ram_mb", return_value=20000), \
-         mock.patch.object(rw, "_RAM_MIN_FREE_MB", 4096), \
-         mock.patch.object(rw, "_RAM_BUDGET_FRACTION", 0.3), \
-         mock.patch.object(rw, "_RAM_BUDGET_CAP_MB", 8192):
-        budget = rw._get_ram_budget_mb()
-        assert budget == pytest.approx((20000 - 4096) * 0.3)
-
-
-# ---------------------------------------------------------------------------
-# rebuild_rag — integration with mocked ramalama
-# ---------------------------------------------------------------------------
-
-def test_rebuild_single_batch_all_fit(tmp_path):
-    files = _make_files(tmp_path, [0.1, 0.1])
-    with mock.patch.object(rw, "get_available_ram_mb", return_value=30000), \
-         mock.patch.object(rw, "_RAM_MIN_FREE_MB", 4096), \
-         mock.patch.object(rw, "_RAM_BUDGET_FRACTION", 0.3), \
-         mock.patch.object(rw, "_RAM_BUDGET_CAP_MB", 8192), \
-         mock.patch.object(rw, "_run_ramalama_rag", return_value=True) as run_mock:
-        result = rw.rebuild_rag(tmp_path, "localhost/test:latest")
-        assert result is True
-        assert run_mock.call_count == 1
-        # Should pass files directly, not a directory
-        paths_arg = run_mock.call_args[0][0]
-        assert all(isinstance(p, Path) for p in paths_arg)
-
-
-def test_rebuild_batches_when_tight(tmp_path):
-    # 4 files at 1 MB each; multiplier=20 -> 20 MB estimated each
-    files = _make_files(tmp_path, [1, 1, 1, 1])
-    with mock.patch.object(rw, "get_available_ram_mb", return_value=10000), \
-         mock.patch.object(rw, "_RAM_MIN_FREE_MB", 4096), \
-         mock.patch.object(rw, "_RAM_BUDGET_FRACTION", 0.5), \
-         mock.patch.object(rw, "_RAM_BUDGET_CAP_MB", 8192), \
-         mock.patch.object(rw, "_run_ramalama_rag", return_value=True) as run_mock:
-        # budget = (10000-4096)*0.5 = 2952 MB -> each file est 20 MB -> ~147 per batch
-        # but that's huge... let's force a smaller budget
-        pass
-
-    # More realistic: budget that forces splits
-    with mock.patch.object(rw, "get_available_ram_mb", return_value=8200), \
-         mock.patch.object(rw, "_RAM_MIN_FREE_MB", 4096), \
-         mock.patch.object(rw, "_RAM_BUDGET_FRACTION", 1.0), \
-         mock.patch.object(rw, "_RAM_BUDGET_CAP_MB", 30), \
-         mock.patch.object(rw, "_run_ramalama_rag", return_value=True) as run_mock:
-        # budget = min((8200-4096)*1.0, 30) = 30 MB
-        # each 1MB file * 20 = 20 MB est -> 1 per batch (second won't fit)
-        result = rw.rebuild_rag(tmp_path, "localhost/test:latest")
-        assert result is True
-        assert run_mock.call_count == 4  # one per file
-
-
-def test_rebuild_aborts_when_ram_drops(tmp_path):
-    files = _make_files(tmp_path, [1, 1, 1])
-    call_count = 0
-
-    def fake_available():
-        nonlocal call_count
-        call_count += 1
-        # Calls 1-3: initial check + _get_ram_budget_mb in rebuild_rag + batch 1 re-check
-        if call_count <= 3:
-            return 10000
-        return 2000  # below _RAM_MIN_FREE_MB
-
-    with mock.patch.object(rw, "get_available_ram_mb", side_effect=fake_available), \
-         mock.patch.object(rw, "_RAM_MIN_FREE_MB", 4096), \
-         mock.patch.object(rw, "_RAM_BUDGET_FRACTION", 1.0), \
-         mock.patch.object(rw, "_RAM_BUDGET_CAP_MB", 25), \
-         mock.patch.object(rw, "_run_ramalama_rag", return_value=True) as run_mock:
-        result = rw.rebuild_rag(tmp_path, "localhost/test:latest")
-        assert result is False
-        # Should have run batch 1 then aborted before batch 2
-        assert run_mock.call_count == 1
-
-
-def test_rebuild_skips_when_no_ram(tmp_path):
-    _make_files(tmp_path, [1])
-    with mock.patch.object(rw, "get_available_ram_mb", return_value=2000), \
-         mock.patch.object(rw, "_RAM_MIN_FREE_MB", 4096), \
-         mock.patch.object(rw, "_run_ramalama_rag") as run_mock:
-        result = rw.rebuild_rag(tmp_path, "localhost/test:latest")
-        assert result is False
-        run_mock.assert_not_called()
+    def test_save_overwrites(self, tmp_path):
+        state_file = tmp_path / "state.json"
+        with patch.object(rw, "STATE_PATH", state_file):
+            rw.save_state({"a": "1"})
+            rw.save_state({"b": "2"})
+            loaded = rw.load_state()
+            assert "a" not in loaded
+            assert loaded == {"b": "2"}

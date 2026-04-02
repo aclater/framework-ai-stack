@@ -80,7 +80,7 @@ def build_system_message(context: str) -> str:
 
 # ── Citation parsing ─────────────────────────────────────────────────────────
 
-_CITATION_PATTERN = re.compile(r"\[([a-f0-9-]+):(\d+)\]")
+_CITATION_PATTERN = re.compile(r"\[([a-fA-F0-9-]+):(\d+)\]")
 
 
 def parse_citations(response_text: str) -> list[tuple[str, int]]:

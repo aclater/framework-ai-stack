@@ -24,7 +24,6 @@ SecurityLabelDisable=true
 Exec=--config /app/config.yaml --port 4000
 
 ContainerName=litellm
-PublishPort=4000:4000
 
 [Service]
 Restart=on-failure

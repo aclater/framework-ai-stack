@@ -6,6 +6,7 @@ with source attribution) are adapted from the Red Hat Validated Patterns vector-
 https://github.com/validatedpatterns-sandbox/vector-embedder
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -231,7 +232,9 @@ def load_drive_docs(staging_dir: Path) -> list[dict]:
         return []
 
     log.info("Drive: %d new/modified file(s)", len(changed))
-    new_state = dict(state)
+    # Prune state entries for files deleted from Drive
+    current_ids = {f["id"] for f in files}
+    new_state = {fid: mtime for fid, mtime in state.items() if fid in current_ids}
 
     for f in changed:
         try:
@@ -251,6 +254,11 @@ def load_drive_docs(staging_dir: Path) -> list[dict]:
             docs.append({"text": text, "source": f"gdrive://{f.name}"})
         else:
             log.warning("Drive: no text extracted from %s", f.name)
+        # Clean up staging file after extraction
+        try:
+            f.unlink()
+        except OSError:
+            pass
     return docs
 
 
@@ -398,8 +406,9 @@ def get_qdrant_client():
 def get_embedder():
     from sentence_transformers import SentenceTransformer
     model_name = os.environ.get("EMBED_MODEL", "sentence-transformers/all-mpnet-base-v2")
-    log.info("Loading embedding model: %s", model_name)
-    return SentenceTransformer(model_name)
+    device = os.environ.get("EMBED_DEVICE", "cpu")
+    log.info("Loading embedding model: %s on %s", model_name, device)
+    return SentenceTransformer(model_name, device=device)
 
 
 def ensure_collection(qdrant, collection_name: str, vector_size: int):
@@ -429,6 +438,12 @@ def ensure_collection(qdrant, collection_name: str, vector_size: int):
             ),
         )
         log.info("Created Qdrant collection '%s' with int8 scalar quantization", collection_name)
+
+
+def _point_id(doc_id: str, chunk_id: int) -> int:
+    """Deterministic point ID from doc_id:chunk_id for idempotent Qdrant upsert."""
+    h = hashlib.sha256(f"{doc_id}:{chunk_id}".encode()).hexdigest()
+    return int(h[:16], 16)
 
 
 def _get_docstore():
@@ -477,26 +492,27 @@ def ingest_docs(docs: list[dict]) -> bool:
     docstore.upsert_chunks(all_chunks)
     log.info("Persisted %d chunks to docstore", len(all_chunks))
 
-    # Step 2: Embed chunk texts
-    log.info("Embedding %d chunks...", len(all_chunks))
+    # Step 2: Embed chunk texts in batches to avoid OOM on large sets
+    embed_batch_size = int(os.environ.get("EMBED_BATCH_SIZE", "64"))
+    log.info("Embedding %d chunks (batch_size=%d)...", len(all_chunks), embed_batch_size)
     embedder = get_embedder()
     texts = [c["text"] for c in all_chunks]
-    vectors = embedder.encode(texts, show_progress_bar=True).tolist()
+    vectors = []
+    for i in range(0, len(texts), embed_batch_size):
+        batch = texts[i:i + embed_batch_size]
+        batch_vecs = embedder.encode(batch, show_progress_bar=False).tolist()
+        vectors.extend(batch_vecs)
 
     # Step 3: Upsert reference-only payloads to Qdrant
     qdrant = get_qdrant_client()
 
-    # Full rebuild: drop and recreate collection with quantization
-    try:
-        qdrant.delete_collection(collection_name)
-    except Exception:
-        pass
+    # Ensure collection exists (idempotent — creates only if missing)
     ensure_collection(qdrant, collection_name, len(vectors[0]))
 
     now = datetime.now(timezone.utc).isoformat()
     points = [
         PointStruct(
-            id=str(uuid.uuid4()),
+            id=_point_id(chunk["doc_id"], chunk["chunk_id"]),
             vector=vec,
             payload={
                 "doc_id": chunk["doc_id"],

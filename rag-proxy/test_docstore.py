@@ -130,10 +130,8 @@ def test_delete_doc(store):
 
 
 def test_factory_sqlite(tmp_path):
-    os.environ["DOCSTORE_BACKEND"] = "sqlite"
     os.environ["DOCSTORE_SQLITE_PATH"] = str(tmp_path / "factory.db")
-    store = create_docstore()
+    store = create_docstore(backend="sqlite")
     store.upsert_chunk("test-factory", 0, "works", "f.md")
     assert store.get_chunk("test-factory", 0) == "works"
-    os.environ.pop("DOCSTORE_BACKEND", None)
     os.environ.pop("DOCSTORE_SQLITE_PATH", None)

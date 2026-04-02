@@ -4,9 +4,9 @@
 
 [Unit]
 Description=RAG proxy (Qdrant search + reranker + context injection)
-After=local-fs.target network-online.target qdrant.service
+After=local-fs.target network-online.target qdrant.service postgres.service
 Wants=network-online.target
-Requires=qdrant.service
+Requires=qdrant.service postgres.service
 
 [Container]
 # UBI9 Python 3.11 pinned to 2026-04-01 build
@@ -56,10 +56,9 @@ Network=host
 Exec=bash -c "pip install --quiet -r /app/requirements.txt && python3 /app/rag-proxy.py"
 
 ContainerName=rag-proxy
-PublishPort=8090:8090
 
 # Health check — proxy should respond to any request
-HealthCmd=python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/v1/models')"
+HealthCmd=python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health')"
 HealthInterval=30s
 HealthTimeout=10s
 HealthRetries=3
@@ -71,7 +70,7 @@ RestartSec=10s
 TimeoutStartSec=300s
 
 # Resource limits
-MemoryMax=4G
+MemoryMax=5G
 CPUQuota=200%
 
 [Install]

@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 log = logging.getLogger("docstore")
 
 DOCSTORE_BACKEND = os.environ.get("DOCSTORE_BACKEND", "postgres")
-DOCSTORE_URL = os.environ.get("DOCSTORE_URL", "postgresql://litellm:litellm@127.0.0.1:5432/litellm")
+DOCSTORE_URL = os.environ.get("DOCSTORE_URL", "")
 DOCSTORE_SQLITE_PATH = os.environ.get("DOCSTORE_SQLITE_PATH", "/tmp/docstore.db")
 
 
@@ -82,7 +82,7 @@ class PostgresDocstore(DocstoreBackend):
                 INSERT INTO chunks (doc_id, chunk_id, text, source, created_at)
                 VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (doc_id, chunk_id)
-                DO UPDATE SET text = EXCLUDED.text, source = EXCLUDED.source, created_at = EXCLUDED.created_at
+                DO UPDATE SET text = EXCLUDED.text, source = EXCLUDED.source
             """, (doc_id, chunk_id, text, source, now))
 
     def upsert_chunks(self, chunks: list[dict]) -> None:
@@ -94,7 +94,7 @@ class PostgresDocstore(DocstoreBackend):
                 INSERT INTO chunks (doc_id, chunk_id, text, source, created_at)
                 VALUES %s
                 ON CONFLICT (doc_id, chunk_id)
-                DO UPDATE SET text = EXCLUDED.text, source = EXCLUDED.source, created_at = EXCLUDED.created_at
+                DO UPDATE SET text = EXCLUDED.text, source = EXCLUDED.source
             """, values)
 
     def get_chunk(self, doc_id: str, chunk_id: int) -> str | None:
@@ -147,7 +147,7 @@ class SQLiteDocstore(DocstoreBackend):
             INSERT INTO chunks (doc_id, chunk_id, text, source, created_at)
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT (doc_id, chunk_id)
-            DO UPDATE SET text = excluded.text, source = excluded.source, created_at = excluded.created_at
+            DO UPDATE SET text = excluded.text, source = excluded.source
         """, (doc_id, chunk_id, text, source, now))
         self._conn.commit()
 
@@ -157,7 +157,7 @@ class SQLiteDocstore(DocstoreBackend):
             INSERT INTO chunks (doc_id, chunk_id, text, source, created_at)
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT (doc_id, chunk_id)
-            DO UPDATE SET text = excluded.text, source = excluded.source, created_at = excluded.created_at
+            DO UPDATE SET text = excluded.text, source = excluded.source
         """, [(c["doc_id"], c["chunk_id"], c["text"], c["source"], now) for c in chunks])
         self._conn.commit()
 
@@ -187,6 +187,8 @@ def create_docstore(backend: str | None = None) -> DocstoreBackend:
     """Factory: create a docstore backend based on config."""
     backend = backend or DOCSTORE_BACKEND
     if backend == "postgres":
+        if not DOCSTORE_URL:
+            raise ValueError("DOCSTORE_URL must be set for postgres backend")
         store = PostgresDocstore(DOCSTORE_URL)
     elif backend == "sqlite":
         store = SQLiteDocstore(DOCSTORE_SQLITE_PATH)

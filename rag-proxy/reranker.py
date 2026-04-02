@@ -4,8 +4,9 @@ Runs after Qdrant vector search, before results are passed to the LLM.
 Uses a cross-encoder model to score (query, document) pairs and returns
 the top_n highest-scoring results in the same schema as the input.
 
-Default model: BAAI/bge-reranker-v2-m3 (Apache 2.0, 0.6B, multilingual).
-Configurable via RERANKER_MODEL env var.
+Default model: cross-encoder/ms-marco-MiniLM-L-6-v2 (Apache 2.0, 22M, English).
+The heavier BAAI/bge-reranker-v2-m3 (0.6B, multilingual) is available via
+RERANKER_MODEL env var but requires GPU or takes ~60s on CPU.
 """
 
 import logging
@@ -16,8 +17,8 @@ from typing import Any
 log = logging.getLogger("rag-proxy.reranker")
 
 RERANKER_ENABLED = os.environ.get("RERANKER_ENABLED", "true").lower() in ("true", "1", "yes")
-RERANKER_MODEL = os.environ.get("RERANKER_MODEL", "BAAI/bge-reranker-v2-m3")
-RERANKER_DEVICE = os.environ.get("RERANKER_DEVICE", "")
+RERANKER_MODEL = os.environ.get("RERANKER_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+RERANKER_DEVICE = os.environ.get("RERANKER_DEVICE", "cpu")
 RERANKER_TOP_K = int(os.environ.get("RERANKER_TOP_K", "20"))
 RERANKER_TOP_N = int(os.environ.get("RERANKER_TOP_N", "5"))
 

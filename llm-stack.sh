@@ -9,7 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QUADLET_DIR="$HOME/.config/containers/systemd"
 CONFIG_DIR="$HOME/.config/llm-stack"
-UNITS=(postgres ramalama litellm open-webui)
+UNITS=(postgres qdrant ramalama rag-proxy litellm rag-watcher open-webui)
 
 # Registry candidates for the ROCm image, in preference order
 ROCM_IMAGES=(
@@ -265,11 +265,11 @@ cmd_pull_models() {
     echo ""
 
     log "Setting SELinux labels on model files..."
-    local gguf_files
-    gguf_files=$(find "$HOME/.local/share/ramalama/store" -name "*.gguf" -type f 2>/dev/null)
-    if [[ -n "$gguf_files" ]]; then
-        echo "$gguf_files" | xargs chcon -t container_ro_file_t -l s0
-        ok "SELinux labels set"
+    local label_count
+    label_count=$(find "$HOME/.local/share/ramalama/store" -name "*.gguf" -type f -print0 2>/dev/null \
+        | xargs -0 --no-run-if-empty chcon -t container_ro_file_t -l s0 -v 2>/dev/null | wc -l)
+    if [[ "$label_count" -gt 0 ]]; then
+        ok "SELinux labels set on $label_count .gguf files"
     fi
 
     header "Model pulled"
@@ -331,11 +331,11 @@ cmd_install() {
     # container_ro_file_t with no MCS categories (s0) avoids label mismatches
     # even when SecurityLabelDisable=true strips the container's label.
     log "Setting SELinux labels on model files..."
-    local gguf_files
-    gguf_files=$(find "$HOME/.local/share/ramalama/store" -name "*.gguf" 2>/dev/null)
-    if [[ -n "$gguf_files" ]]; then
-        echo "$gguf_files" | xargs chcon -t container_ro_file_t -l s0
-        ok "SELinux labels set on $(echo "$gguf_files" | wc -l) .gguf files"
+    local label_count
+    label_count=$(find "$HOME/.local/share/ramalama/store" -name "*.gguf" -type f -print0 2>/dev/null \
+        | xargs -0 --no-run-if-empty chcon -t container_ro_file_t -l s0 -v 2>/dev/null | wc -l)
+    if [[ "$label_count" -gt 0 ]]; then
+        ok "SELinux labels set on $label_count .gguf files"
     fi
 
     log "Installing quadlets to $QUADLET_DIR..."
@@ -380,7 +380,7 @@ cmd_uninstall() {
         systemctl --user disable "$u" 2>/dev/null || true
         rm -f "$QUADLET_DIR/$u.container"
     done
-    rm -f "$QUADLET_DIR"/litellm-db-data.volume "$QUADLET_DIR"/open-webui-data.volume
+    rm -f "$QUADLET_DIR"/*.volume
     systemctl --user daemon-reload
     ok "Quadlets removed — models preserved in ~/.local/share/ramalama/"
 }
@@ -446,10 +446,14 @@ cmd_status() {
 cmd_logs() {
     local target="${1:-}"
     case "$target" in
-        model)  journalctl --user -u ramalama -f ;;
-        proxy)  journalctl --user -u litellm -f ;;
-        webui)  journalctl --user -u open-webui -f ;;
-        *)      fail "Usage: ./llm-stack.sh logs <model|proxy|webui>" ;;
+        model)       journalctl --user -u ramalama -f ;;
+        proxy)       journalctl --user -u litellm -f ;;
+        rag-proxy)   journalctl --user -u rag-proxy -f ;;
+        rag|watcher) journalctl --user -u rag-watcher -f ;;
+        qdrant)      journalctl --user -u qdrant -f ;;
+        webui)       journalctl --user -u open-webui -f ;;
+        postgres|db) journalctl --user -u postgres -f ;;
+        *)           fail "Usage: ./llm-stack.sh logs <model|proxy|rag-proxy|rag|qdrant|webui|postgres>" ;;
     esac
 }
 
