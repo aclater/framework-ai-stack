@@ -43,7 +43,7 @@ RAG watcher (polls every 15 minutes)
   │  2. Extract text (PDF, DOCX, PPTX, XLSX, HTML, Markdown)
   │  3. Chunk with RecursiveCharacterTextSplitter
   │  4. Persist chunks to document store (Postgres)
-  │  5. Embed with sentence-transformers/all-mpnet-base-v2
+  │  5. Embed with sentence-transformers/all-mpnet-base-v2 (CPU-only)
   │  6. Upsert reference-only payloads to Qdrant
   ▼
 Qdrant (vectors) + Postgres (chunk text)
@@ -59,7 +59,7 @@ OpenAI-compatible API gateway. Routes all model aliases to the RAG proxy. Provid
 
 ### RAG proxy (:8090)
 
-The core intelligence layer. Intercepts chat completion requests, performs retrieval, reranking, and citation-aware context injection, then post-processes the response with grounding classification and citation validation.
+The core intelligence layer. Intercepts chat completion requests, performs retrieval, reranking, and citation-aware context injection, then post-processes the response with grounding classification and citation validation. Both the embedding model and the reranker run on CPU — ROCm PyTorch segfaults on gfx1151 for sentence-transformers models (see ADR-013).
 
 See [grounding.md](grounding.md) for the full grounding specification.
 

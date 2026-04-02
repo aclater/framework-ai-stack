@@ -220,6 +220,7 @@ All configuration is via environment variables in `~/.config/llm-stack/env` and 
 | `QDRANT_URL` | `http://127.0.0.1:6333` | Qdrant endpoint |
 | `QDRANT_COLLECTION` | `documents` | Collection name |
 | `EMBED_MODEL` | `sentence-transformers/all-mpnet-base-v2` | Embedding model |
+| `EMBED_DEVICE` | `cpu` | `cpu` or `cuda` — CPU required on gfx1151 (see ADR-013) |
 | `RAG_TOP_K` | `20` | Qdrant candidate count |
 | `RERANKER_ENABLED` | `true` | Enable/disable reranker |
 | `RERANKER_MODEL` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Cross-encoder model |

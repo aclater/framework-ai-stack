@@ -1,4 +1,4 @@
-# ADR-013: Lightweight CPU reranker over GPU-accelerated bge-reranker-v2-m3
+# ADR-013: CPU-only sentence-transformers on gfx1151
 
 ## Status
 
@@ -23,3 +23,5 @@ The model is configurable via `RERANKER_MODEL` env var. Swap back to `BAAI/bge-r
 - No GPU passthrough needed in the rag-proxy container — simpler, SELinux enforcing
 - The proxy container no longer needs SecurityLabelDisable=true
 - 22M vs 600M params means the model loads instantly and uses negligible memory
+- The embedding model (`sentence-transformers/all-mpnet-base-v2`) is also pinned to CPU via `EMBED_DEVICE=cpu` — the same PyTorch ROCm segfault affects all sentence-transformers models on gfx1151, not just the reranker
+- Both `EMBED_DEVICE` and `RERANKER_DEVICE` env vars allow override if ROCm PyTorch stabilizes

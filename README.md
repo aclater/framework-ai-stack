@@ -119,7 +119,7 @@ Available model aliases (all route to Qwen3.5-35B-A3B on :8080):
 | [001](docs/adr/001-live-qdrant-over-oci-images.md) | Live Qdrant over ramalama rag OCI images |
 | [002](docs/adr/002-reference-only-indexing.md) | Reference-only indexing — vectors in Qdrant, text in Postgres |
 | [003](docs/adr/003-corpus-preferring-grounding.md) | Corpus-preferring grounding with transparent fallback |
-| [013](docs/adr/013-lightweight-cpu-reranker.md) | Lightweight CPU reranker over GPU bge-reranker-v2-m3 |
+| [013](docs/adr/013-lightweight-cpu-reranker.md) | CPU-only sentence-transformers on gfx1151 (embedder + reranker) |
 
 ## Acknowledgements
 
