@@ -243,6 +243,7 @@ cmd_pull_image() {
     # Update image reference in source and installed quadlets
     log "Updating quadlets to use: $pulled"
     for f in "$SCRIPT_DIR"/quadlets/ramalama*.container; do
+        [[ -f "$f" ]] || continue
         sed -i "s|^Image=.*|Image=$pulled|" "$f"
         ok "Updated source: $(basename "$f")"
     done
@@ -262,6 +263,14 @@ cmd_pull_models() {
     log "Qwen3.5-35B-A3B UD-Q4_K_XL (~22 GB)..."
     ramalama pull hf://unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf
     echo ""
+
+    log "Setting SELinux labels on model files..."
+    local gguf_files
+    gguf_files=$(find "$HOME/.local/share/ramalama/store" -name "*.gguf" -type f 2>/dev/null)
+    if [[ -n "$gguf_files" ]]; then
+        echo "$gguf_files" | xargs chcon -t container_ro_file_t -l s0
+        ok "SELinux labels set"
+    fi
 
     header "Model pulled"
     ramalama list
@@ -286,9 +295,10 @@ _resolve_model_path() {
         return 1
     fi
 
-    # Find the actual file under any snapshot sha directory
+    # Find the newest file if multiple snapshots exist
     local path
-    path=$(find "$snapdir" -maxdepth 2 -name "$filename" 2>/dev/null | head -1)
+    path=$(find "$snapdir" -maxdepth 2 -name "$filename" -printf '%T@ %p\n' 2>/dev/null \
+        | sort -rn | head -1 | cut -d' ' -f2-)
     echo "$path"
 }
 
@@ -453,7 +463,13 @@ cmd_swap() {
     log "Pulling $model..."
     ramalama pull "$model"
 
-    warn "Update the Mount= path in quadlets/ramalama.container to match the new model path"
+    local pulled_path
+    pulled_path=$(find "$HOME/.local/share/ramalama/store" -name "*.gguf" -type f \
+        -printf '%T@ %p\n' 2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-)
+    if [[ -n "$pulled_path" ]]; then
+        ok "Model path: $pulled_path"
+    fi
+    warn "Update MODEL_STORE_PATH and MODEL_FILENAME in llm-stack.sh to match the new model"
     warn "Then run: ./llm-stack.sh install && systemctl --user restart ramalama"
 }
 
