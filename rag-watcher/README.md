@@ -80,10 +80,10 @@ Once the watcher has built the RAG image, use it with any model:
 ramalama run --rag localhost/rag-data:latest granite-moe
 ```
 
-Or with the models already configured in the llm-stack:
+Or with the model configured in the stack:
 
 ```bash
-ramalama run --rag localhost/rag-data:latest qwen2.5-coder
+ramalama run --rag localhost/rag-data:latest hf://unsloth/Qwen3.5-35B-A3B-GGUF
 ```
 
 ## Running standalone (without container)

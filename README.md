@@ -1,17 +1,18 @@
 # framework-ai-stack
 
-Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB unified memory). Qwen3.5-35B-A3B inference routed through a LiteLLM proxy, plus a Google Drive RAG watcher that automatically imports and indexes documents into a RamaLama RAG image — all running as rootless Podman containers managed by systemd quadlets.
+Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB unified memory). Qwen3.5-35B-A3B inference routed through a LiteLLM proxy, plus a Google Drive RAG watcher that automatically imports and indexes documents into a RamaLama RAG image. All services run as rootless Podman containers managed by systemd quadlets.
 
 ![Architecture](architecture.svg)
 
 ## Stack
 
-| Service | Image | Port | Notes |
+| Service | Image / Runtime | Port | Notes |
 |---|---|---|---|
 | postgres | `postgres:16-alpine` | 5432 | Backing store for LiteLLM |
 | litellm | `ghcr.io/berriai/litellm:main-stable` | 4000 | OpenAI-compatible proxy (v1.82.3-stable.patch.2) |
 | ramalama | `quay.io/ramalama/rocm:latest` | 8080 | Qwen3.5-35B-A3B UD-Q4\_K\_XL (~22 GB) |
 | open-webui | `ghcr.io/open-webui/open-webui:v0.8.6` | 3000 | Chat UI, pinned to v0.8.6 |
+| rag-watcher | Host Python venv | — | Polls Google Drive, rebuilds RAG OCI image |
 
 Models are pulled and managed by [RamaLama](https://github.com/containers/ramalama). LiteLLM provides a single OpenAI-compatible endpoint at `:4000` that routes all aliases to the same model.
 
@@ -20,7 +21,7 @@ Models are pulled and managed by [RamaLama](https://github.com/containers/ramala
 - Fedora 43
 - AMD Ryzen AI Max+ 395 (gfx1151) or similar AMD iGPU/dGPU with ROCm support
 - ~25 GB free disk space for the model
-- **BIOS: UMA frame buffer set to 64 GB — model uses ~22 GB VRAM, leaving ~42 GB VRAM headroom for KV cache and ~55 GB free system RAM**
+- **BIOS: UMA frame buffer set to 64 GB — model uses ~22 GB VRAM, leaving ~42 GB VRAM headroom for KV cache and ~62 GB system RAM**
 
 ## First-time setup
 
@@ -36,6 +37,9 @@ chmod +x llm-stack.sh
 ./llm-stack.sh pull-models   # download model (~22 GB)
 ./llm-stack.sh install       # install quadlets to systemd + fix SELinux labels
 ./llm-stack.sh up            # start everything
+
+# Optional: set up the Google Drive RAG watcher
+./rag-watcher/setup.sh       # interactive setup for Drive polling
 ```
 
 ## Usage
@@ -54,7 +58,7 @@ chmod +x llm-stack.sh
   restart         restart all services
   status          show unit states
   test            smoke-test inference
-  logs <tier>     follow logs  (model|proxy|webui)
+  logs <service>  follow logs  (model|proxy|webui)
   swap <model>    hot-swap the model
   uninstall       remove quadlets (models kept)
 ```
