@@ -1,6 +1,6 @@
 # framework-ai-stack
 
-Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB unified memory). Qwen3.5-35B-A3B inference with live RAG — a Google Drive watcher automatically imports documents into a Qdrant vector database, and a RAG proxy injects relevant context into every query. All services run as rootless Podman containers managed by systemd quadlets.
+Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB unified memory). Qwen3.5-35B-A3B inference with live RAG — a watcher automatically imports documents from Google Drive, git repos, and web URLs into a Qdrant vector database backed by a Postgres document store. A RAG proxy searches Qdrant, hydrates chunks from the document store, reranks with a cross-encoder, and injects the most relevant context into every query. All services run as rootless Podman containers managed by systemd quadlets.
 
 ![Architecture](architecture.svg)
 
@@ -8,15 +8,15 @@ Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB
 
 | Service | Image | Port | Notes |
 |---|---|---|---|
-| postgres | `quay.io/sclorg/postgresql-16-c9s` | 5432 | Backing store for LiteLLM |
-| qdrant | `docker.io/qdrant/qdrant` | 6333 | Vector database for RAG |
-| ramalama | `quay.io/ramalama/rocm:latest` | 8080 | Qwen3.5-35B-A3B UD-Q4\_K\_XL (~22 GB) |
-| rag-proxy | `ubi10/python-312-minimal` | 8090 | Qdrant search + context injection |
+| postgres | `quay.io/sclorg/postgresql-16-c9s` | 5432 | LiteLLM state + document store |
+| qdrant | `docker.io/qdrant/qdrant` | 6333 | Vector search (int8 scalar quantization) |
+| ramalama | `quay.io/ramalama/rocm:latest` | 8080 | Qwen3.5-35B-A3B UD-Q4\_K\_XL (~22 GB, q8\_0 KV cache) |
+| rag-proxy | `ubi9/python-311` (pinned digest) | 8090 | Qdrant search → docstore hydration → reranker → context injection |
 | litellm | `ghcr.io/berriai/litellm:main-stable` | 4000 | OpenAI-compatible proxy |
 | open-webui | `ghcr.io/open-webui/open-webui:v0.8.6` | 3000 | Chat UI, pinned to v0.8.6 |
-| rag-watcher | `ubi10` | — | Ingests from Drive, git repos, and web URLs into Qdrant |
+| rag-watcher | `ubi10` | — | Ingests from Drive, git repos, and web URLs into docstore + Qdrant |
 
-Models are pulled and managed by [RamaLama](https://github.com/containers/ramalama). LiteLLM routes all aliases through the RAG proxy, which searches Qdrant for relevant document chunks and injects them as context before forwarding to the model. Documents from Google Drive, git repos, and web URLs are automatically ingested — no model restart required.
+Models are pulled and managed by [RamaLama](https://github.com/containers/ramalama). LiteLLM routes all aliases through the RAG proxy. The proxy searches Qdrant for candidate vectors (reference payloads only — no text stored in Qdrant), hydrates chunk text from the Postgres document store, reranks with BAAI/bge-reranker-v2-m3, and injects the top results as context before forwarding to the model. Documents from Google Drive, git repos, and web URLs are automatically ingested — no model restart required.
 
 ## Prerequisites
 
@@ -95,9 +95,15 @@ Available model aliases (all route to Qwen3.5-35B-A3B on :8080):
 
 ## Implementation notes
 
-**LiteLLM** uses `main-stable` (currently v1.82.3-stable.patch.2), backed by postgres:16-alpine. It is not pinned to a specific version tag.
+**LiteLLM** uses `main-stable` (currently v1.82.3-stable.patch.2), backed by sclorg/postgresql-16-c9s. It is not pinned to a specific version tag.
 
-**Open WebUI** is pinned to v0.8.6. It uses `DATABASE_URL=sqlite:////app/backend/data/webui.db` (not the postgres instance — that's for LiteLLM). It runs on port 3000 via `PORT=3000` because `Network=host` would otherwise conflict with ramalama on :8080.
+**Postgres** serves double duty: LiteLLM state and the RAG document store (chunks table). The document store uses upsert semantics on `(doc_id, chunk_id)` so re-ingestion is idempotent.
+
+**Qdrant** stores vectors with reference-only payloads `{doc_id, chunk_id, source, created_at}` — no document text. The collection uses int8 scalar quantization (quantile 0.99, always\_ram) to reduce vector memory footprint. Qdrant does not support adding quantization to an existing collection — recreate if migrating.
+
+**Reranker** uses BAAI/bge-reranker-v2-m3 (0.6B, Apache 2.0, multilingual) as a cross-encoder to score query-document pairs after vector retrieval. Configurable via `RERANKER_MODEL` env var; can be swapped to bge-reranker-v2.5-gemma2-lightweight or mxbai-rerank-large-v2. Disabled via `RERANKER_ENABLED=false`.
+
+**Open WebUI** is pinned to v0.8.6. It uses `DATABASE_URL=sqlite:////app/backend/data/webui.db` (not the postgres instance). It runs on port 3000 via `PORT=3000` because `Network=host` would otherwise conflict with ramalama on :8080.
 
 **Environment variables:** `OPENAI_API_KEY` and all shared secrets live in `env.example` / `~/.config/llm-stack/env`. Systemd does not expand `EnvironmentFile` vars inside `Environment=` lines, so all vars that need cross-referencing must be set directly in the env file.
 
