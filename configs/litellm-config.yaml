@@ -1,33 +1,33 @@
-# LiteLLM config — single Qwen3.5-35B-A3B model on :8080
-# All aliases route to the same backend
+# LiteLLM config — Qwen3.5-35B-A3B on :8080, RAG proxy on :8090
+# All aliases route through the RAG proxy for context-augmented responses
 
 model_list:
 
   - model_name: default
     litellm_params:
       model: openai/qwen3.5
-      api_base: http://localhost:8080/v1
+      api_base: http://127.0.0.1:8090/v1
       api_key: none
       timeout: 300
 
   - model_name: reasoning
     litellm_params:
       model: openai/qwen3.5
-      api_base: http://localhost:8080/v1
+      api_base: http://127.0.0.1:8090/v1
       api_key: none
       timeout: 300
 
   - model_name: code
     litellm_params:
       model: openai/qwen3.5
-      api_base: http://localhost:8080/v1
+      api_base: http://127.0.0.1:8090/v1
       api_key: none
       timeout: 300
 
   - model_name: fast
     litellm_params:
       model: openai/qwen3.5
-      api_base: http://localhost:8080/v1
+      api_base: http://127.0.0.1:8090/v1
       api_key: none
       timeout: 60
 

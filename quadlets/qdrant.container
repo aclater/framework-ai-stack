@@ -1,0 +1,25 @@
+# ~/.config/containers/systemd/qdrant.container
+# Qdrant vector database for RAG search
+# Managed by: systemctl --user [start|stop|restart|status] qdrant
+
+[Unit]
+Description=Qdrant vector database
+After=local-fs.target network-online.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/qdrant/qdrant:latest
+
+Volume=qdrant-data:/qdrant/storage:Z
+SecurityLabelDisable=true
+
+PublishPort=6333:6333
+ContainerName=qdrant
+
+[Service]
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=60s
+
+[Install]
+WantedBy=default.target

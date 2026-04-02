@@ -1,0 +1,37 @@
+# ~/.config/containers/systemd/rag-proxy.container
+# RAG proxy — searches Qdrant and injects document context into chat completions
+# Managed by: systemctl --user [start|stop|restart|status] rag-proxy
+
+[Unit]
+Description=RAG proxy (Qdrant search + context injection)
+After=local-fs.target network-online.target qdrant.service
+Wants=network-online.target
+Requires=qdrant.service
+
+[Container]
+Image=registry.fedoraproject.org/fedora:43
+
+Volume=%h/git/framework-ai-stack/rag-proxy:/app:ro,Z
+
+Environment=MODEL_URL=http://host.containers.internal:8080
+Environment=QDRANT_URL=http://host.containers.internal:6333
+Environment=QDRANT_COLLECTION=documents
+Environment=EMBED_MODEL=sentence-transformers/all-mpnet-base-v2
+Environment=RAG_TOP_K=10
+Environment=RAG_PROXY_PORT=8090
+
+Network=host
+SecurityLabelDisable=true
+
+Exec=bash -c "dnf install -y -q python3-pip && pip install --quiet -r /app/requirements.txt && python3 /app/rag-proxy.py"
+
+ContainerName=rag-proxy
+PublishPort=8090:8090
+
+[Service]
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=300s
+
+[Install]
+WantedBy=default.target

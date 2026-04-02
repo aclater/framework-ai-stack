@@ -1,46 +1,38 @@
 # ~/.config/containers/systemd/rag-watcher.container
-# Google Drive RAG watcher — polls a Drive folder and rebuilds RAG OCI images
+# Google Drive RAG watcher — polls a Drive folder and ingests documents into Qdrant
 # Managed by: systemctl --user [start|stop|restart|status] rag-watcher
 
 [Unit]
 Description=Google Drive RAG watcher
-After=local-fs.target network-online.target
+After=local-fs.target network-online.target qdrant.service
 Wants=network-online.target
+Requires=qdrant.service
 
 [Container]
 Image=registry.fedoraproject.org/fedora:43
 
 Volume=%h/git/framework-ai-stack/rag-watcher:/app:ro,Z
 Volume=%h/.config/ramalama/gdrive-sa.json:/run/secrets/gdrive-sa.json:ro,Z
-
-# Staging and tmp dirs use host bind-mounts (not named volumes) so that
-# ramalama rag, which runs a nested container via the host podman socket,
-# can see the files at the same path on both sides.
-Volume=%h/.local/share/ramalama/rag-staging:%h/.local/share/ramalama/rag-staging:Z
-Volume=%h/.local/share/ramalama/rag-tmp:%h/.local/share/ramalama/rag-tmp:Z
-
-# Mount host podman socket so ramalama rag can build OCI images on the host
-Volume=/run/user/%U/podman/podman.sock:/run/podman/podman.sock:Z
-
-# Mount host container storage so ramalama can access built images
-Volume=%h/.local/share/containers:/var/lib/containers:Z
+Volume=rag-staging:/staging:Z
 
 EnvironmentFile=%h/.config/llm-stack/env
 Environment=GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/gdrive-sa.json
-Environment=STAGING_DIR=%h/.local/share/ramalama/rag-staging
-Environment=CONTAINER_HOST=unix:///run/podman/podman.sock
+Environment=STAGING_DIR=/staging
+Environment=QDRANT_URL=http://host.containers.internal:6333
+Environment=QDRANT_COLLECTION=documents
+Environment=EMBED_MODEL=sentence-transformers/all-mpnet-base-v2
 
 Network=host
 SecurityLabelDisable=true
 
-Exec=bash -c "dnf install -y -q ramalama python3-pip && pip install --quiet -r /app/requirements.txt && TMPDIR=%h/.local/share/ramalama/rag-tmp python3 /app/rag-watcher.py"
+Exec=bash -c "dnf install -y -q python3-pip && pip install --quiet -r /app/requirements.txt && python3 /app/rag-watcher.py"
 
 ContainerName=rag-watcher
 
 [Service]
 Restart=on-failure
 RestartSec=30s
-TimeoutStartSec=180s
+TimeoutStartSec=300s
 
 [Install]
 WantedBy=default.target

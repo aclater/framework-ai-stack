@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Google Drive RAG watcher — polls a Drive folder and rebuilds a RAG OCI image."""
+"""Google Drive RAG watcher — polls a Drive folder and ingests documents into Qdrant."""
 
 import json
 import logging
 import os
-import shutil
-import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
 from google.oauth2 import service_account
@@ -40,7 +39,7 @@ EXPORT_MAP = {
 }
 
 # Binary file extensions we download directly
-DOWNLOAD_EXTENSIONS = {".pdf", ".docx", ".pptx", ".xlsx", ".html", ".md"}
+DOWNLOAD_EXTENSIONS = {".pdf", ".docx", ".pptx", ".xlsx", ".html", ".md", ".txt"}
 
 STATE_PATH = Path(
     os.environ.get(
@@ -133,164 +132,172 @@ def download_file(service, file_info: dict, staging_dir: Path) -> bool:
     return True
 
 
-def get_available_ram_mb() -> int:
-    """Get available system RAM in MB from /proc/meminfo."""
-    with open("/proc/meminfo") as f:
-        for line in f:
-            if line.startswith("MemAvailable:"):
-                return int(line.split()[1]) // 1024
-    return 0
+# ── Text extraction ──────────────────────────────────────────────────────────
+
+def extract_text(file_path: Path) -> str:
+    """Extract text from a file based on its extension."""
+    ext = file_path.suffix.lower()
+
+    if ext == ".md" or ext == ".txt" or ext == ".html":
+        return file_path.read_text(errors="replace")
+
+    if ext == ".pdf":
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(str(file_path))
+            return "\n\n".join(page.extract_text() or "" for page in reader.pages)
+        except Exception:
+            log.warning("Failed to extract text from PDF: %s", file_path.name)
+            return ""
+
+    if ext == ".docx":
+        try:
+            import docx
+            doc = docx.Document(str(file_path))
+            return "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
+        except Exception:
+            log.warning("Failed to extract text from DOCX: %s", file_path.name)
+            return ""
+
+    if ext == ".pptx":
+        try:
+            from pptx import Presentation
+            prs = Presentation(str(file_path))
+            texts = []
+            for slide in prs.slides:
+                for shape in slide.shapes:
+                    if shape.has_text_frame:
+                        texts.append(shape.text_frame.text)
+            return "\n\n".join(texts)
+        except Exception:
+            log.warning("Failed to extract text from PPTX: %s", file_path.name)
+            return ""
+
+    if ext == ".xlsx":
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(str(file_path), read_only=True, data_only=True)
+            texts = []
+            for ws in wb.worksheets:
+                for row in ws.iter_rows(values_only=True):
+                    vals = [str(c) for c in row if c is not None]
+                    if vals:
+                        texts.append(" | ".join(vals))
+            return "\n".join(texts)
+        except Exception:
+            log.warning("Failed to extract text from XLSX: %s", file_path.name)
+            return ""
+
+    return ""
 
 
-# ramalama rag peak memory is roughly this multiple of raw file size on disk
-_RAM_MULTIPLIER = int(os.environ.get("RAG_RAM_MULTIPLIER", "20"))
-# fraction of available RAM we're willing to use — conservative to leave
-# headroom for desktop apps (Chrome, Signal), model serving, and system stability
-_RAM_BUDGET_FRACTION = float(os.environ.get("RAG_RAM_BUDGET_FRACTION", "0.20"))
-# absolute maximum budget cap — prevents excessive memory usage even with
-# large available RAM, prioritizing desktop stability over RAG throughput
-# 128GB system: 64GB CPU RAM = 65536 MB, 20% = ~13GB, cap at 12GB for safety
-_RAM_BUDGET_CAP_MB = int(os.environ.get("RAG_RAM_BUDGET_CAP_MB", "12288"))
-# minimum RAM that must remain free before we start a batch — ensures desktop
-# remains responsive and prevents OOM kills of user applications
-# 128GB system: keep 16GB free for desktop + model serving + system overhead
-_RAM_MIN_FREE_MB = int(os.environ.get("RAG_RAM_MIN_FREE_MB", "16384"))
+def chunk_text(text: str, chunk_size: int = 1024, overlap: int = 128) -> list[str]:
+    """Split text into overlapping chunks."""
+    if len(text) <= chunk_size:
+        return [text] if text.strip() else []
+
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunk = text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+        start = end - overlap
+
+    return chunks
 
 
-def _get_ram_budget_mb() -> float:
-    """Compute the RAM budget for a single batch, re-checked each time."""
-    available_mb = get_available_ram_mb()
-    if available_mb < _RAM_MIN_FREE_MB:
-        return 0.0
-    usable_mb = available_mb - _RAM_MIN_FREE_MB
-    budget = usable_mb * _RAM_BUDGET_FRACTION
-    return min(budget, _RAM_BUDGET_CAP_MB)
+# ── Qdrant ingestion ─────────────────────────────────────────────────────────
+
+def get_qdrant_client():
+    from qdrant_client import QdrantClient
+    url = os.environ.get("QDRANT_URL", "http://127.0.0.1:6333")
+    return QdrantClient(url=url, timeout=30)
 
 
-def _plan_batches(files: list[Path], budget_mb: float) -> list[list[Path]]:
-    """Split files into batches whose estimated peak RAM fits within budget_mb."""
-    sorted_files = sorted(files, key=lambda f: f.stat().st_size)
-    batches: list[list[Path]] = []
-    batch: list[Path] = []
-    batch_mb = 0.0
-
-    for f in sorted_files:
-        size_mb = f.stat().st_size / (1024 * 1024)
-        estimated = size_mb * _RAM_MULTIPLIER
-        if batch and batch_mb + estimated > budget_mb:
-            batches.append(batch)
-            batch = [f]
-            batch_mb = estimated
-        else:
-            batch.append(f)
-            batch_mb += estimated
-
-    if batch:
-        batches.append(batch)
-    return batches
+def get_embedder():
+    from sentence_transformers import SentenceTransformer
+    model_name = os.environ.get("EMBED_MODEL", "sentence-transformers/all-mpnet-base-v2")
+    log.info("Loading embedding model: %s", model_name)
+    return SentenceTransformer(model_name)
 
 
-def _run_ramalama_rag(paths: list[Path], rag_image: str) -> bool:
-    """Run ramalama rag on one or more file paths. Returns True on success."""
-    cmd = ["ramalama", "rag"] + [str(p) for p in paths] + [rag_image]
-    try:
-        subprocess.run(cmd, check=True)
-        return True
-    except subprocess.CalledProcessError as exc:
-        log.error("ramalama rag failed (exit %d)", exc.returncode)
-        return False
-    except FileNotFoundError:
-        log.error("ramalama not found on PATH")
-        return False
+def ensure_collection(qdrant, collection_name: str, vector_size: int):
+    from qdrant_client.models import Distance, VectorParams
+    collections = [c.name for c in qdrant.get_collections().collections]
+    if collection_name not in collections:
+        qdrant.create_collection(
+            collection_name=collection_name,
+            vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE),
+        )
+        log.info("Created Qdrant collection: %s", collection_name)
 
 
-def rebuild_rag(staging_dir: Path, rag_image: str) -> bool:
-    """Run ramalama rag to rebuild the OCI image, batching documents if needed."""
+def ingest_files(staging_dir: Path) -> bool:
+    """Extract text from staged files, embed, and upsert into Qdrant."""
+    from qdrant_client.models import PointStruct
+
     all_files = [f for f in staging_dir.iterdir() if f.is_file()]
     if not all_files:
         log.warning("No files in staging directory")
         return True
 
-    budget_mb = _get_ram_budget_mb()
-    total_size_mb = sum(f.stat().st_size for f in all_files) / (1024 * 1024)
-    estimated_peak_mb = total_size_mb * _RAM_MULTIPLIER
+    collection_name = os.environ.get("QDRANT_COLLECTION", "documents")
+    chunk_size = int(os.environ.get("CHUNK_SIZE", "1024"))
+    chunk_overlap = int(os.environ.get("CHUNK_OVERLAP", "128"))
 
-    log.info(
-        "RAM check: %.0f MB available, %.0f MB budget (%.0f%% of usable, "
-        "cap %d MB, %d MB reserved), %.1f MB docs on disk, ~%.0f MB estimated peak",
-        get_available_ram_mb(), budget_mb, _RAM_BUDGET_FRACTION * 100,
-        _RAM_BUDGET_CAP_MB, _RAM_MIN_FREE_MB,
-        total_size_mb, estimated_peak_mb,
-    )
+    # Extract and chunk all documents
+    all_chunks = []
+    for f in all_files:
+        text = extract_text(f)
+        if not text:
+            log.warning("No text extracted from %s — skipping", f.name)
+            continue
+        chunks = chunk_text(text, chunk_size, chunk_overlap)
+        for chunk in chunks:
+            all_chunks.append({"text": chunk, "source": f.name})
+        log.info("Extracted %d chunks from %s", len(chunks), f.name)
 
-    if budget_mb <= 0:
-        log.error(
-            "Available RAM (%d MB) below minimum free threshold (%d MB) — "
-            "skipping RAG build this cycle",
-            get_available_ram_mb(), _RAM_MIN_FREE_MB,
+    if not all_chunks:
+        log.warning("No text chunks to ingest")
+        return True
+
+    log.info("Embedding %d chunks total...", len(all_chunks))
+    embedder = get_embedder()
+    texts = [c["text"] for c in all_chunks]
+    vectors = embedder.encode(texts, show_progress_bar=True).tolist()
+
+    qdrant = get_qdrant_client()
+    ensure_collection(qdrant, collection_name, len(vectors[0]))
+
+    # Delete existing points and re-ingest (full rebuild on each poll)
+    qdrant.delete_collection(collection_name)
+    ensure_collection(qdrant, collection_name, len(vectors[0]))
+
+    points = [
+        PointStruct(
+            id=str(uuid.uuid4()),
+            vector=vec,
+            payload=chunk,
         )
-        return False
+        for vec, chunk in zip(vectors, all_chunks)
+    ]
 
-    if estimated_peak_mb <= budget_mb:
-        log.info("All %d files fit in RAM budget — processing at once", len(all_files))
-        return _run_ramalama_rag(all_files, rag_image)
+    # Upsert in batches of 100
+    batch_size = 100
+    for i in range(0, len(points), batch_size):
+        batch = points[i : i + batch_size]
+        qdrant.upsert(collection_name=collection_name, points=batch)
 
-    # Batch: pass each batch of files directly to ramalama (no accumulation —
-    # ramalama rag appends to the OCI image on each invocation)
-    batches = _plan_batches(all_files, budget_mb)
-    log.info(
-        "Batching %d files into %d batches to stay within %.0f MB budget",
-        len(all_files), len(batches), budget_mb,
-    )
-
-    for i, batch in enumerate(batches, 1):
-        # Re-check RAM before each batch — a prior batch or other process may
-        # have changed available memory
-        current_budget = _get_ram_budget_mb()
-        if current_budget <= 0:
-            log.error(
-                "Available RAM dropped below minimum free threshold before "
-                "batch %d/%d — aborting (processed %d/%d batches)",
-                i, len(batches), i - 1, len(batches),
-            )
-            return False
-
-        batch_size_mb = sum(f.stat().st_size for f in batch) / (1024 * 1024)
-        log.info(
-            "Batch %d/%d: %d file(s) (%.1f MB on disk), "
-            "%.0f MB RAM available, %.0f MB budget",
-            i, len(batches), len(batch), batch_size_mb,
-            get_available_ram_mb(), current_budget,
-        )
-        if not _run_ramalama_rag(batch, rag_image):
-            return False
-
-    log.info("RAG image rebuilt successfully (%d batches)", len(batches))
+    log.info("Ingested %d chunks into Qdrant collection '%s'", len(points), collection_name)
     return True
 
 
-def reload_inference() -> None:
-    """Restart the ramalama service so the RAG proxy picks up the rebuilt image."""
-    log.info("Restarting ramalama to load updated RAG image...")
-    try:
-        # Find ramalama containers by label and stop them — systemd will restart
-        # the service, which starts fresh containers with the new image mounted.
-        result = subprocess.run(
-            ["podman", "ps", "-q", "--filter", "label=ai.ramalama.command"],
-            capture_output=True, text=True,
-        )
-        container_ids = result.stdout.strip().split()
-        if container_ids:
-            subprocess.run(["podman", "stop"] + container_ids, check=False)
-            log.info("Stopped %d ramalama container(s) — systemd will restart", len(container_ids))
-        else:
-            log.warning("No ramalama containers found to restart")
-    except Exception:
-        log.exception("Failed to restart ramalama")
+# ── Poll loop ────────────────────────────────────────────────────────────────
 
-
-def poll_once(service, folder_id: str, staging_dir: Path, rag_image: str) -> None:
-    """Single poll iteration: check for changes, download, rebuild if needed."""
+def poll_once(service, folder_id: str, staging_dir: Path) -> None:
+    """Single poll iteration: check for changes, download, ingest into Qdrant."""
     state = load_state()
     files = list_files(service, folder_id)
     changed = []
@@ -320,11 +327,11 @@ def poll_once(service, folder_id: str, staging_dir: Path, rag_image: str) -> Non
         save_state(new_state)
         return
 
-    if rebuild_rag(staging_dir, rag_image):
+    if ingest_files(staging_dir):
         save_state(new_state)
-        reload_inference()
+        log.info("Qdrant updated — new documents available for RAG immediately")
     else:
-        log.warning("State not updated due to RAG build failure — will retry next poll")
+        log.warning("State not updated due to ingestion failure — will retry next poll")
 
 
 def main() -> None:
@@ -333,15 +340,15 @@ def main() -> None:
         log.error("GDRIVE_FOLDER_ID is not set")
         sys.exit(1)
 
-    rag_image = os.environ.get("RAG_IMAGE", "localhost/rag-data:latest")
     interval = int(os.environ.get("WATCH_INTERVAL_MINUTES", "15"))
-    staging_dir = Path(os.environ.get("STAGING_DIR", "/tmp/ramalama-rag-staging"))
+    staging_dir = Path(os.environ.get("STAGING_DIR", "/tmp/rag-staging"))
 
     staging_dir.mkdir(parents=True, exist_ok=True)
 
     log.info("Starting Drive RAG watcher")
     log.info("  Folder ID:  %s", folder_id)
-    log.info("  RAG image:  %s", rag_image)
+    log.info("  Qdrant:     %s", os.environ.get("QDRANT_URL", "http://127.0.0.1:6333"))
+    log.info("  Collection: %s", os.environ.get("QDRANT_COLLECTION", "documents"))
     log.info("  Interval:   %d min", interval)
     log.info("  Staging:    %s", staging_dir)
 
@@ -349,7 +356,7 @@ def main() -> None:
 
     while True:
         try:
-            poll_once(service, folder_id, staging_dir, rag_image)
+            poll_once(service, folder_id, staging_dir)
         except Exception:
             log.exception("Poll cycle failed")
         time.sleep(interval * 60)
