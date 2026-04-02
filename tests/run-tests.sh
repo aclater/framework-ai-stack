@@ -200,7 +200,6 @@ assert_file_exists "litellm config copied"   "$CONFIG_DIR/litellm-config.yaml"
 assert_contains "setup detects hip"          "hip"                  "$SETUP_OUT"
 assert_contains "setup adds HSA var"         "HSA_OVERRIDE_GFX_VERSION" "$SETUP_OUT"
 assert_file_contains "bashrc gets HSA var"   "$TEST_HOME/.bashrc"   "HSA_OVERRIDE_GFX_VERSION=11.5.1"
-assert_file_contains "bashrc gets UMA var"   "$TEST_HOME/.bashrc"   "LLAMA_HIP_UMA=1"
 
 HOME="$TEST_HOME" bash "$PATCHED" setup &>/dev/null || true
 BASHRC_COUNT=$(grep -c "HSA_OVERRIDE_GFX_VERSION" "$TEST_HOME/.bashrc" || echo 0)
@@ -240,7 +239,7 @@ assert_contains "litellm has postgres DATABASE_URL" \
 assert_contains "ramalama publishes 8080" "8080" "$(cat $QUADLET_SRC/ramalama.container)"
 assert_contains "ramalama has /dev/kfd" "/dev/kfd" "$(cat $QUADLET_SRC/ramalama.container)"
 assert_contains "ramalama has /dev/dri" "/dev/dri" "$(cat $QUADLET_SRC/ramalama.container)"
-assert_contains "ramalama has LLAMA_HIP_UMA"          "LLAMA_HIP_UMA=1"            "$(cat $QUADLET_SRC/ramalama.container)"
+assert_not_contains "ramalama must not set LLAMA_HIP_UMA" "LLAMA_HIP_UMA=1" "$(cat $QUADLET_SRC/ramalama.container)"
 assert_contains "ramalama has HSA_OVERRIDE_GFX_VERSION" "HSA_OVERRIDE_GFX_VERSION" "$(cat $QUADLET_SRC/ramalama.container)"
 assert_contains "ramalama mount placeholder present" "MODEL_PATH_PLACEHOLDER" "$(cat $QUADLET_SRC/ramalama.container)"
 assert_contains "ramalama mounts to /mnt/models"    "/mnt/models/model.file" "$(cat $QUADLET_SRC/ramalama.container)"
@@ -294,7 +293,7 @@ section "6. env.example"
 ENV="$REPO_DIR/env.example"
 assert_file_exists "env.example exists" "$ENV"
 assert_contains "has HSA_OVERRIDE_GFX_VERSION" "HSA_OVERRIDE_GFX_VERSION" "$(cat $ENV)"
-assert_contains "has LLAMA_HIP_UMA"            "LLAMA_HIP_UMA"            "$(cat $ENV)"
+assert_not_contains "LLAMA_HIP_UMA not active"  "^LLAMA_HIP_UMA"           "$(cat $ENV)"
 assert_contains "has LITELLM_MASTER_KEY"        "LITELLM_MASTER_KEY"       "$(cat $ENV)"
 assert_not_contains "no real API keys in example" "sk-ant" "$(cat $ENV)"
 

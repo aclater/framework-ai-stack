@@ -81,9 +81,7 @@ Available model aliases (all route to Qwen3.5-35B-A3B on :8080):
 
 **gfx1151 (AI Max+ 395):** ROCm 6.4.x in Fedora 43 has known page-fault issues on gfx1151. `HSA_OVERRIDE_GFX_VERSION=11.5.1` is set automatically by `./llm-stack.sh setup`. A fix is expected in ROCm 7.x (Fedora 44). If you hit errors, check `./llm-stack.sh logs model`.
 
-**Unified memory:** `LLAMA_HIP_UMA=1` is set in the inference container, which tells llama.cpp to treat the 128 GB unified pool as one flat allocation space rather than staging copies between system RAM and "VRAM."
-
-**Memory budget:** Qwen3.5-35B-A3B UD-Q4\_K\_XL uses ~22 GB. With a 64/64 BIOS split, this leaves ~42 GB of VRAM headroom for KV cache (131072 context, parallel 4) and ~55 GB of free system RAM for applications.
+**Memory budget:** Qwen3.5-35B-A3B UD-Q4\_K\_XL uses ~22 GB VRAM. With a 64/64 BIOS split, this leaves ~42 GB of VRAM headroom for KV cache (131072 context, parallel 4) and ~62 GB of system RAM for applications. Do **not** set `LLAMA_HIP_UMA=1` — on the AI Max+ 395 with dedicated VRAM carved out in BIOS, it forces allocations into GTT (system RAM) instead of VRAM.
 
 **SELinux:** The ramalama quadlet requires `SecurityLabelDisable=true` because SELinux blocks `/dev/kfd` access in the user systemd context. `cmd_install` automatically runs `chcon -t container_ro_file_t -l s0` on all `.gguf` model files.
 
