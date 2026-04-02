@@ -269,6 +269,26 @@ def rebuild_rag(staging_dir: Path, rag_image: str) -> bool:
     return True
 
 
+def reload_inference() -> None:
+    """Restart the ramalama service so the RAG proxy picks up the rebuilt image."""
+    log.info("Restarting ramalama to load updated RAG image...")
+    try:
+        # Find ramalama containers by label and stop them — systemd will restart
+        # the service, which starts fresh containers with the new image mounted.
+        result = subprocess.run(
+            ["podman", "ps", "-q", "--filter", "label=ai.ramalama.command"],
+            capture_output=True, text=True,
+        )
+        container_ids = result.stdout.strip().split()
+        if container_ids:
+            subprocess.run(["podman", "stop"] + container_ids, check=False)
+            log.info("Stopped %d ramalama container(s) — systemd will restart", len(container_ids))
+        else:
+            log.warning("No ramalama containers found to restart")
+    except Exception:
+        log.exception("Failed to restart ramalama")
+
+
 def poll_once(service, folder_id: str, staging_dir: Path, rag_image: str) -> None:
     """Single poll iteration: check for changes, download, rebuild if needed."""
     state = load_state()
@@ -302,6 +322,7 @@ def poll_once(service, folder_id: str, staging_dir: Path, rag_image: str) -> Non
 
     if rebuild_rag(staging_dir, rag_image):
         save_state(new_state)
+        reload_inference()
     else:
         log.warning("State not updated due to RAG build failure — will retry next poll")
 
