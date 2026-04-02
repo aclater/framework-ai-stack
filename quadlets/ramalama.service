@@ -1,0 +1,34 @@
+# ~/.config/systemd/user/ramalama.service
+# Qwen3.5-35B-A3B + RAG via ramalama serve
+# ramalama manages its own podman containers (model + RAG proxy).
+# Managed by: systemctl --user [start|stop|restart|status] ramalama
+
+[Unit]
+Description=RamaLama Qwen3.5-35B-A3B + RAG
+After=local-fs.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HSA_OVERRIDE_GFX_VERSION=11.5.1
+Environment=AMD_LOG_LEVEL=0
+Environment=GPU_MAX_HW_QUEUES=1
+
+ExecStart=ramalama serve \
+    --rag localhost/rag-data:latest \
+    --env GPU_MAX_HW_QUEUES=1 \
+    --ctx-size 131072 \
+    --ngl 999 \
+    --threads 16 \
+    --runtime-args "--parallel 4 --flash-attn on" \
+    -p 8080 \
+    hf://unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf
+
+ExecStop=ramalama stop ramalama
+
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=300s
+
+[Install]
+WantedBy=default.target
