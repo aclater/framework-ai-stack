@@ -76,8 +76,8 @@ Configured via environment variables in `~/.config/llm-stack/env`:
 - `DOCSTORE_BACKEND` — postgres or sqlite (default: postgres)
 
 ## Container images
-- rag-proxy: ubi9/python-311 (pinned digest, SELinux enforcing)
-- rag-watcher: ubi10 base (SELinux enforcing)
+- rag-proxy: localhost/rag-proxy (built from ubi9/python-311, deps + models baked in)
+- rag-watcher: localhost/rag-watcher (built from ubi10, deps + models baked in)
 - postgres: sclorg/postgresql-16-c9s (LiteLLM state + document store)
 - qdrant, litellm, ramalama, open-webui: upstream images
 

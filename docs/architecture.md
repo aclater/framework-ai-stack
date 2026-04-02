@@ -63,7 +63,7 @@ The core intelligence layer. Intercepts chat completion requests, performs retri
 
 See [grounding.md](grounding.md) for the full grounding specification.
 
-**Image:** `ubi9/python-311` (pinned digest)
+**Image:** `localhost/rag-proxy` (built from `ubi9/python-311`, deps + models baked in)
 
 ### Qdrant (:6333)
 
@@ -97,7 +97,7 @@ Polls document sources on a configurable interval (default 15 minutes). Supports
 
 After extraction and chunking, persists to the document store first (ensuring the source of truth is written before vectors), then embeds and upserts reference payloads to Qdrant.
 
-**Image:** `ubi10` base
+**Image:** `localhost/rag-watcher` (built from `ubi10`, deps + models baked in)
 
 ### Open WebUI (:3000)
 
@@ -138,8 +138,8 @@ Chat interface. Connects to LiteLLM as its OpenAI backend, so all queries automa
 
 | Container | Base image | SELinux | Reason |
 |-----------|-----------|---------|--------|
-| rag-proxy | `ubi9/python-311` (pinned) | Enforcing | Red Hat ecosystem, Python 3.11 for cross-encoder compatibility |
-| rag-watcher | `ubi10` | Enforcing | Needs dnf for git, Python 3.12 |
+| rag-proxy | `localhost/rag-proxy` (from ubi9/python-311) | Enforcing | Pre-built with deps + models |
+| rag-watcher | `localhost/rag-watcher` (from ubi10) | Enforcing | Pre-built with deps + models |
 | postgres | `sclorg/postgresql-16-c9s` | Enforcing | Red Hat ecosystem |
 | qdrant | `qdrant/qdrant` | Disabled | Debian binary triggers SELinux execmem denial on Fedora 43 |
 | litellm | `litellm:main-stable` | Disabled | Debian binary triggers SELinux execmem denial on Fedora 43 |

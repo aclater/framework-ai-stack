@@ -9,8 +9,10 @@ Wants=network-online.target
 Requires=qdrant.service postgres.service
 
 [Container]
-# UBI9 Python 3.11 pinned to 2026-04-01 build
-Image=registry.access.redhat.com/ubi9/python-311@sha256:8fb94e142e1093b82ca64b334264a5da8e874567d64ce4b6d614f86da3e38813
+# Pre-built image with deps + models baked in (see rag-proxy/Containerfile)
+# Build: podman build -t localhost/rag-proxy rag-proxy/
+# Falls back to base UBI9 image if not built (pip install at runtime)
+Image=localhost/rag-proxy:latest
 
 Volume=%h/git/framework-ai-stack/rag-proxy:/app:ro,Z
 
@@ -53,7 +55,7 @@ Environment=PYTHONPATH=/app
 
 Network=host
 
-Exec=bash -c "pip install --quiet -r /app/requirements.txt && python3 /app/rag-proxy.py"
+Exec=python3 /app/rag-proxy.py
 
 ContainerName=rag-proxy
 

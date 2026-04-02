@@ -9,7 +9,9 @@ Wants=network-online.target
 Requires=qdrant.service
 
 [Container]
-Image=registry.access.redhat.com/ubi10:latest
+# Pre-built image with deps + models baked in (see rag-watcher/Containerfile)
+# Build: podman build -t localhost/rag-watcher rag-watcher/
+Image=localhost/rag-watcher:latest
 
 Volume=%h/git/framework-ai-stack/rag-watcher:/app:ro,Z
 Volume=%h/git/framework-ai-stack/rag-proxy/docstore.py:/app/docstore.py:ro,Z
@@ -27,7 +29,7 @@ Environment=DOCSTORE_URL=postgresql://litellm:litellm@host.containers.internal:5
 
 Network=host
 
-Exec=bash -c "dnf install -y -q python3.12 python3.12-pip git-core && pip3.12 install --quiet -r /app/requirements.txt && python3.12 /app/rag-watcher.py"
+Exec=python3.12 /app/rag-watcher.py
 
 ContainerName=rag-watcher
 

@@ -44,6 +44,7 @@ ${BOLD}First-time setup (run in order):${RESET}
   setup         verify GPU, write configs
   pull-image    pull the RamaLama ROCm container image
   pull-models   download model (~22 GB)
+  build         build rag-proxy and rag-watcher container images
   install       install quadlets to systemd
   up            start all services
 
@@ -55,8 +56,7 @@ ${BOLD}Operations:${RESET}
   test          smoke-test inference
 
 ${BOLD}Logs:${RESET}
-  logs model        follow model logs
-  logs proxy        follow LiteLLM proxy logs
+  logs <service>    follow logs (model|proxy|rag-proxy|rag|qdrant|webui|postgres)
 
 ${BOLD}Models:${RESET}
   pull-image              pull ROCm container image (with registry fallback)
@@ -277,6 +277,26 @@ cmd_pull_models() {
     echo ""
     ok "Next: ./llm-stack.sh install"
 }
+
+# ── Container image build ────────────────────────────────────────────────────
+
+cmd_build() {
+    header "Building container images"
+
+    log "Building rag-proxy image..."
+    podman build -t localhost/rag-proxy:latest "$SCRIPT_DIR/rag-proxy/" \
+        && ok "localhost/rag-proxy:latest" \
+        || fail "rag-proxy build failed"
+
+    log "Building rag-watcher image..."
+    podman build -t localhost/rag-watcher:latest "$SCRIPT_DIR/rag-watcher/" \
+        && ok "localhost/rag-watcher:latest" \
+        || fail "rag-watcher build failed"
+
+    header "Images built"
+    podman images --filter reference='localhost/rag-*' --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.Created}}"
+}
+
 
 # ── Quadlet install / uninstall ───────────────────────────────────────────────
 
@@ -520,6 +540,7 @@ main() {
         setup)          cmd_setup ;;
         pull-image)     cmd_pull_image ;;
         pull-models)    cmd_pull_models ;;
+        build)          cmd_build ;;
         install)        cmd_install ;;
         uninstall)      cmd_uninstall ;;
         up)             cmd_up ;;

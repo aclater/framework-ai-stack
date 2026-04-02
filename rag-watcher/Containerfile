@@ -1,0 +1,21 @@
+# RAG watcher — pre-built image with system packages and Python dependencies
+# Base: UBI10 (matches current quadlet)
+FROM registry.access.redhat.com/ubi10:latest
+
+# Install system packages at build time (not runtime)
+RUN dnf install -y -q python3.12 python3.12-pip git-core && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf
+
+# Install Python dependencies at build time
+COPY requirements.txt /tmp/requirements.txt
+RUN pip3.12 install --no-cache-dir -r /tmp/requirements.txt && \
+    rm /tmp/requirements.txt
+
+# Pre-download embedding model so first poll isn't slow
+RUN python3.12 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-mpnet-base-v2')"
+
+# App code is mounted as a volume at runtime for dev workflow
+WORKDIR /app
+EXPOSE 8090
+CMD ["python3.12", "/app/rag-watcher.py"]

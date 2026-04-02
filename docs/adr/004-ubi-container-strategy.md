@@ -20,8 +20,8 @@ Use UBI (Universal Base Image) containers wherever possible, with SELinux enforc
 
 | Container | Image | SELinux | Rationale |
 |-----------|-------|---------|-----------|
-| rag-proxy | `ubi9/python-311` (pinned digest) | Enforcing | Red Hat ecosystem, pinned for reproducibility |
-| rag-watcher | `ubi10` base | Enforcing | Needs dnf for git + Python 3.12 |
+| rag-proxy | `localhost/rag-proxy` (from ubi9/python-311) | Enforcing | Pre-built with deps + models baked in |
+| rag-watcher | `localhost/rag-watcher` (from ubi10) | Enforcing | Pre-built with deps + models baked in |
 | postgres | `sclorg/postgresql-16-c9s` | Enforcing | Red Hat-maintained Postgres |
 
 `SecurityLabelDisable=true` is only used where technically unavoidable:

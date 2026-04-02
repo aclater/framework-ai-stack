@@ -2,11 +2,14 @@
 """RAG proxy — searches Qdrant, hydrates from docstore, reranks, validates
 citations, and injects grounded context into chat completions."""
 
+import asyncio
+import functools
 import json
 import logging
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 import httpx
 import uvicorn
@@ -54,18 +57,26 @@ THINKING_BUDGET = int(os.environ.get("THINKING_BUDGET", "1024"))
 qdrant: QdrantClient = None
 embedder: SentenceTransformer = None
 docstore = None
+_collection_exists: bool = False
+
+# Thread pool for blocking I/O (embedder.encode, docstore, reranker)
+_executor = ThreadPoolExecutor(max_workers=4)
+
+# Embedding cache — avoids re-encoding repeated queries
+EMBED_CACHE_SIZE = int(os.environ.get("EMBED_CACHE_SIZE", "256"))
 
 app = FastAPI()
 
 
 @app.on_event("startup")
 def startup():
-    global qdrant, embedder, docstore
+    global qdrant, embedder, docstore, _collection_exists
     log.info("Connecting to Qdrant at %s", QDRANT_URL)
     qdrant = QdrantClient(url=QDRANT_URL, timeout=10)
 
     collections = [c.name for c in qdrant.get_collections().collections]
-    if COLLECTION_NAME not in collections:
+    _collection_exists = COLLECTION_NAME in collections
+    if not _collection_exists:
         log.warning("Collection '%s' not found in Qdrant — RAG context will be empty until documents are ingested", COLLECTION_NAME)
 
     # Force CPU for the embedding model — ROCm PyTorch segfaults on gfx1151
@@ -78,7 +89,15 @@ def startup():
     from docstore import create_docstore
     docstore = create_docstore()
 
-    log.info("RAG proxy ready — forwarding to %s (thinking_budget=%d)", MODEL_URL, THINKING_BUDGET)
+    # Warm up the reranker so first request isn't slow
+    try:
+        from reranker import _get_model
+        _get_model()
+    except Exception:
+        log.warning("Reranker warm-up failed — will load on first request")
+
+    log.info("RAG proxy ready — forwarding to %s (thinking_budget=%d, embed_cache=%d)",
+             MODEL_URL, THINKING_BUDGET, EMBED_CACHE_SIZE)
 
 
 @app.on_event("shutdown")
@@ -90,14 +109,30 @@ def shutdown():
 
 # ── Retrieval pipeline ───────────────────────────────────────────────────────
 
-def search_qdrant(query: str) -> list[dict]:
-    """Embed the query and search Qdrant for reference payloads."""
+@functools.lru_cache(maxsize=EMBED_CACHE_SIZE)
+def _embed_query(query: str) -> tuple:
+    """Embed a query string, caching the result. Returns tuple for hashability."""
+    return tuple(embedder.encode(query).tolist())
+
+
+def _check_collection() -> bool:
+    """Check if the Qdrant collection exists, with caching."""
+    global _collection_exists
+    if _collection_exists:
+        return True
+    # Re-check — rag-watcher may have created it since startup
+    collections = [c.name for c in qdrant.get_collections().collections]
+    _collection_exists = COLLECTION_NAME in collections
+    return _collection_exists
+
+
+def _search_qdrant_sync(query: str) -> list[dict]:
+    """Synchronous Qdrant search — runs in thread pool."""
     try:
-        collections = [c.name for c in qdrant.get_collections().collections]
-        if COLLECTION_NAME not in collections:
+        if not _check_collection():
             return []
 
-        query_vector = embedder.encode(query).tolist()
+        query_vector = list(_embed_query(query))
         results = qdrant.query_points(
             collection_name=COLLECTION_NAME,
             query=query_vector,
@@ -114,12 +149,8 @@ def search_qdrant(query: str) -> list[dict]:
         return []
 
 
-def hydrate_results(refs: list[dict]) -> list[dict]:
-    """Batch-hydrate Qdrant reference payloads from the document store.
-
-    Orphaned vectors (chunk missing from docstore) are excluded with a
-    warning — they don't abort the query.
-    """
+def _hydrate_sync(refs: list[dict]) -> list[dict]:
+    """Synchronous docstore hydration — runs in thread pool."""
     if not refs:
         return []
 
@@ -143,22 +174,32 @@ def hydrate_results(refs: list[dict]) -> list[dict]:
     return hydrated
 
 
-def retrieve_and_rerank(user_query: str) -> tuple[list[dict], list[dict]]:
-    """Full retrieval pipeline: Qdrant → hydrate → rerank.
+def _rerank_sync(query: str, candidates: list[dict]) -> list[dict]:
+    """Synchronous reranking — runs in thread pool."""
+    return rerank(query, candidates)
+
+
+async def retrieve_and_rerank(user_query: str) -> tuple[list[dict], list[dict]]:
+    """Full async retrieval pipeline: Qdrant → hydrate → rerank.
+
+    All blocking operations (embedding, Qdrant I/O, docstore SQL, reranker
+    inference) run in a thread pool to avoid blocking the FastAPI event loop.
 
     Returns (ranked_chunks, all_retrieved_refs) where all_retrieved_refs
     is the full set of hydrated results before reranking, needed for
     citation validation.
     """
-    refs = search_qdrant(user_query)
-    candidates = hydrate_results(refs)
-    ranked = rerank(user_query, candidates)
+    loop = asyncio.get_event_loop()
+
+    refs = await loop.run_in_executor(_executor, _search_qdrant_sync, user_query)
+    candidates = await loop.run_in_executor(_executor, _hydrate_sync, refs)
+    ranked = await loop.run_in_executor(_executor, _rerank_sync, user_query, candidates)
     return ranked, candidates
 
 
 # ── Request processing ───────────────────────────────────────────────────────
 
-def process_chat_request(body: dict) -> tuple[dict, dict]:
+async def process_chat_request(body: dict) -> tuple[dict, dict]:
     """Process a chat completion request with grounding.
 
     Returns (modified_body, retrieval_context) where retrieval_context
@@ -178,8 +219,8 @@ def process_chat_request(body: dict) -> tuple[dict, dict]:
     if not user_query:
         return body, {"ranked": [], "retrieved_set": set(), "corpus_coverage": "none", "user_query": ""}
 
-    # Retrieve and rerank
-    ranked, all_candidates = retrieve_and_rerank(user_query)
+    # Retrieve and rerank (async — blocking I/O runs in thread pool)
+    ranked, all_candidates = await retrieve_and_rerank(user_query)
     corpus_coverage = determine_corpus_coverage(ranked)
 
     # Build the retrieved set for citation validation — includes all
@@ -301,7 +342,7 @@ async def chat_completions(request: Request):
         body = await request.json()
     except Exception:
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
-    body, retrieval_ctx = process_chat_request(body)
+    body, retrieval_ctx = await process_chat_request(body)
 
     stream = body.get("stream", False)
 

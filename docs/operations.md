@@ -227,8 +227,9 @@ All configuration is via environment variables in `~/.config/llm-stack/env` and 
 | `RERANKER_TOP_N` | `5` | Results after reranking |
 | `RERANKER_DEVICE` | `cpu` | `cpu`, `cuda`, or auto-detect |
 | `THINKING_BUDGET` | `1024` | Token budget for model reasoning |
+| `EMBED_CACHE_SIZE` | `256` | LRU cache size for query embeddings |
 | `DOCSTORE_BACKEND` | `postgres` | `postgres` or `sqlite` |
-| `DOCSTORE_URL` | `postgresql://...` | Postgres connection string |
+| `DOCSTORE_URL` | *(required)* | Postgres connection string |
 
 ### RAG watcher
 
