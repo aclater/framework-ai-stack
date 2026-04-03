@@ -10,12 +10,15 @@ Wants=network-online.target
 Requires=qdrant.service postgres.service
 
 [Container]
-# Published image from ghcr.io — ONNX models baked in at build time
+# Published image from ghcr.io — ONNX models + semantic router baked in
 # RSS ~708 MB (raw ONNX Runtime, no fastembed/PyTorch)
 Image=ghcr.io/aclater/ragpipe:main
 
 # Writable model cache for ONNX models (persists across restarts)
 Volume=ragpipe-model-cache:/home/default/.cache/ragpipe:Z
+
+# Routes config (local file, not in repo)
+Volume=%h/.config/ragpipe/routes.yaml:/etc/ragpipe/routes.yaml:ro,Z
 
 # Run as non-root user (default in UBI Python images, UID 1001)
 User=1001
@@ -23,6 +26,12 @@ User=1001
 Environment=MODEL_URL=http://host.containers.internal:8080
 Environment=QDRANT_URL=http://host.containers.internal:6333
 Environment=QDRANT_COLLECTION=documents
+
+# Semantic router — optional, ragpipe works without RAGPIPE_ROUTES_FILE
+# Create ~/.config/ragpipe/routes.yaml to enable routing (see ragpipe docs)
+Environment=RAGPIPE_ROUTES_FILE=/etc/ragpipe/routes.yaml
+# Set a real token in ~/.config/llm-stack/env — this is a placeholder
+Environment=RAGPIPE_ADMIN_TOKEN=change-me
 
 # Override ragpipe defaults for wider retrieval window (default: 20/5)
 Environment=RAG_TOP_K=40
