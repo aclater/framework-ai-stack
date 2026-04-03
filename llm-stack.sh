@@ -65,6 +65,7 @@ ROCM_IMAGES=(
     "ghcr.io/ggml-org/llama.cpp:full-rocm"
 )
 CUDA_IMAGES=(
+    "quay.io/ramalama/cuda:latest"
     "ghcr.io/ggml-org/llama.cpp:server-cuda"
 )
 
@@ -130,14 +131,14 @@ cmd_deps() {
     header "Installing system dependencies"
     [[ "$(id -u)" == "0" ]] && fail "Run as your regular user, not root"
 
-    local packages=(podman podman-compose curl python3 git)
+    local packages=(podman podman-compose ramalama curl python3 git)
 
     if [[ "$GPU_VENDOR" == "nvidia" ]]; then
         log "NVIDIA GPU detected ($GPU_NAME, ${GPU_VRAM_MB} MB) — adding CUDA packages"
         packages+=(nvidia-container-toolkit)
     else
         log "AMD GPU detected ($GPU_NAME, $(( GPU_VRAM_MB / 1024 )) GB) — adding ROCm packages"
-        packages+=(ramalama rocm rocm-hip rocm-runtime rocminfo amd-gpu-firmware)
+        packages+=(rocm rocm-hip rocm-runtime rocminfo amd-gpu-firmware)
     fi
 
     sudo dnf makecache --refresh

@@ -1,5 +1,5 @@
 # ~/.config/containers/systemd/ramalama.container
-# Qwen3.5-9B via llama.cpp CUDA on NVIDIA GPUs (≤16 GB VRAM)
+# Qwen3.5-9B via RamaLama CUDA on NVIDIA GPUs (≤16 GB VRAM)
 # Auto-selected when nvidia-smi is detected and VRAM < 32 GB
 # Managed by: systemctl --user [start|stop|restart|status] ramalama
 
@@ -9,22 +9,21 @@ After=local-fs.target network-online.target
 Wants=network-online.target
 
 [Container]
-Image=ghcr.io/ggml-org/llama.cpp:server-cuda
+Image=quay.io/ramalama/cuda:latest
 
 # NVIDIA GPU passthrough via CDI (nvidia-container-toolkit + /etc/cdi/nvidia.yaml)
 AddDevice=nvidia.com/gpu=all
-# Debian-based image triggers SELinux execmem denial on Fedora 43.
-# This is a binary incompatibility, not a GPU device issue.
-# See ADR-011 and https://bugzilla.redhat.com/show_bug.cgi?id=XXXXXX
+# Upstream CUDA image triggers SELinux execmem denial on Fedora 43.
+# This is a Debian binary incompatibility, not a GPU device issue (see ADR-011).
 SecurityLabelDisable=true
 
-# Model bind-mount — downloaded to ~/.local/share/llm-models/
+# Model bind-mount — ramalama stores models under ~/.local/share/ramalama
 Mount=type=bind,src=MODEL_PATH_PLACEHOLDER,target=/mnt/models/model.file,ro,Z
 
-# Qwen3.5-9B at Q4_K_M (~5.7 GB) fits entirely in 12 GB VRAM with room
+# Qwen3.5-9B at UD-Q4_K_XL (~6 GB) fits entirely in 12 GB VRAM with room
 # for KV cache. 32K context with 2 parallel slots (16K each) leaves ~5 GB
 # headroom for KV cache at q4_0.
-# --flash-attn on: RTX 4070 Ti (Ada Lovelace, sm_89) supports flash attention
+# --flash-attn on: Ada Lovelace (sm_89) and newer support flash attention
 Exec=llama-server --model /mnt/models/model.file --host 0.0.0.0 --port 8080 \
     --ctx-size 32768 --n-gpu-layers 999 --threads 16 --parallel 2 \
     --flash-attn on --cache-type-k q4_0 --cache-type-v q4_0 --jinja
