@@ -2,11 +2,12 @@
 
 Local AI stack for Fedora 43. LLM inference with live RAG from Google Drive, git repos, and web URLs. Corpus-preferring grounding with citation validation.
 
-## Hosts
-- **harrison** (default): Ryzen AI Max+ 395 (ROCm, gfx1151), 128 GB unified, Qwen3.5-35B-A3B
-- **lennon**: Ryzen 9 3950X + RTX 4070 Ti (CUDA, 12 GB VRAM), 128 GB DDR4, Qwen3.5-9B
+## GPU auto-detection
+`llm-stack.sh` auto-detects GPU vendor and VRAM at startup:
+- **NVIDIA** (CUDA): uses `hosts/nvidia/quadlets/` overlay, Qwen3.5-9B for ≤16 GB VRAM
+- **AMD** (ROCm): uses base `quadlets/`, Qwen3.5-35B-A3B for ≥32 GB VRAM
 
-Per-host overrides live in `hosts/<hostname>/quadlets/`. The install step overlays them onto the base quadlets. `llm-stack.sh` auto-detects the host via `hostname -s`.
+Detection is fully automatic — no hostname or manual config needed. Per-profile overrides live in `hosts/<profile>/quadlets/` and are overlaid during `./llm-stack.sh install`.
 
 ## Architecture
 ```

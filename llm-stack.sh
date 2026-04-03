@@ -11,16 +11,52 @@ QUADLET_DIR="$HOME/.config/containers/systemd"
 CONFIG_DIR="$HOME/.config/llm-stack"
 UNITS=(postgres qdrant ramalama ragpipe litellm rag-watcher open-webui)
 
-# ── Host detection ───────────────────────────────────────────────────────────
-# Per-host overrides live in hosts/<hostname>/quadlets/ and are overlaid
-# onto the base quadlets/ during install. Only files that differ need to
-# exist in the host directory.
-HOSTNAME_SHORT="$(hostname -s)"
-HOST_DIR="$SCRIPT_DIR/hosts/$HOSTNAME_SHORT"
+# ── GPU detection ────────────────────────────────────────────────────────────
+# Auto-detect GPU vendor and VRAM to select the right container image, model,
+# and quadlet overrides. Per-profile overrides live in hosts/<profile>/quadlets/
+# and are overlaid onto the base quadlets/ during install.
+#
+# Profiles:
+#   nvidia — NVIDIA GPU (CUDA), selects Qwen3.5-9B for ≤16 GB VRAM
+#   rocm   — AMD GPU (ROCm), base quadlets, selects Qwen3.5-35B-A3B for ≥32 GB VRAM
+_detect_gpu() {
+    if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
+        GPU_VENDOR="nvidia"
+        GPU_VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)
+        GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
+    elif [[ -e /dev/kfd ]]; then
+        GPU_VENDOR="rocm"
+        local vram_bytes
+        vram_bytes=$(cat /sys/class/drm/card*/device/mem_info_vram_total 2>/dev/null | head -1)
+        GPU_VRAM_MB=$(( ${vram_bytes:-0} / 1048576 ))
+        GPU_NAME=$(rocminfo 2>/dev/null | grep -oP 'gfx[0-9a-f]+' | head -1 || echo "unknown")
+    else
+        GPU_VENDOR="cpu"
+        GPU_VRAM_MB=0
+        GPU_NAME="none"
+    fi
+}
+_detect_gpu
+
+GPU_PROFILE="$GPU_VENDOR"
+HOST_DIR="$SCRIPT_DIR/hosts/$GPU_PROFILE"
 if [[ -d "$HOST_DIR" ]]; then
     HOST_QUADLET_SRC="$HOST_DIR/quadlets"
 else
     HOST_QUADLET_SRC=""
+fi
+
+# Model selection based on VRAM — 9B fits in ≤16 GB, 35B-A3B needs ≥32 GB
+if [[ "$GPU_VRAM_MB" -ge 32000 ]]; then
+    MODEL_REPO="unsloth/Qwen3.5-35B-A3B-GGUF"
+    MODEL_FILE="Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"
+    MODEL_SIZE_HINT="~22 GB"
+    MODEL_DESC="Qwen3.5-35B-A3B"
+else
+    MODEL_REPO="unsloth/Qwen3.5-9B-GGUF"
+    MODEL_FILE="Qwen3.5-9B-UD-Q4_K_XL.gguf"
+    MODEL_SIZE_HINT="~6 GB"
+    MODEL_DESC="Qwen3.5-9B"
 fi
 
 # Registry candidates for the inference image, in preference order
@@ -51,7 +87,7 @@ header() { echo -e "\n${BOLD}━━━  $*  ━━━${RESET}\n"; }
 cmd_help() {
     cat <<EOF
 
-${BOLD}llm-stack.sh${RESET} — local LLM stack (Fedora 43 · host: $HOSTNAME_SHORT)
+${BOLD}llm-stack.sh${RESET} — local LLM stack (Fedora 43 · $GPU_VENDOR · $MODEL_DESC)
 
 ${BOLD}First-time setup (run in order):${RESET}
   deps          install system packages via dnf       [needs sudo]
@@ -96,11 +132,11 @@ cmd_deps() {
 
     local packages=(podman podman-compose curl python3 git)
 
-    if command -v nvidia-smi &>/dev/null; then
-        log "NVIDIA GPU detected — adding CUDA packages"
+    if [[ "$GPU_VENDOR" == "nvidia" ]]; then
+        log "NVIDIA GPU detected ($GPU_NAME, ${GPU_VRAM_MB} MB) — adding CUDA packages"
         packages+=(nvidia-container-toolkit)
     else
-        log "AMD GPU assumed — adding ROCm packages"
+        log "AMD GPU detected ($GPU_NAME, $(( GPU_VRAM_MB / 1024 )) GB) — adding ROCm packages"
         packages+=(ramalama rocm rocm-hip rocm-runtime rocminfo amd-gpu-firmware)
     fi
 
@@ -164,18 +200,19 @@ cmd_setup() {
 
     # GPU
     echo ""
-    if command -v nvidia-smi &>/dev/null; then
+    log "Detected GPU: $GPU_VENDOR ($GPU_NAME, $(( GPU_VRAM_MB / 1024 )) GB VRAM)"
+    log "Model selection: $MODEL_DESC ($MODEL_SIZE_HINT)"
+    if [[ -n "$HOST_QUADLET_SRC" ]]; then
+        log "Profile: hosts/$GPU_PROFILE/ (overlay active)"
+    else
+        log "Profile: base quadlets (no overlay)"
+    fi
+    echo ""
+
+    if [[ "$GPU_VENDOR" == "nvidia" ]]; then
         log "Checking GPU / CUDA..."
-        local gpu_name
-        gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
-        if [[ -n "$gpu_name" ]]; then
-            ok "NVIDIA GPU: $gpu_name"
-            local vram
-            vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader 2>/dev/null | head -1)
-            ok "VRAM: $vram"
-        else
-            warn "nvidia-smi found no GPU"
-        fi
+        ok "NVIDIA GPU: $GPU_NAME"
+        ok "VRAM: $(( GPU_VRAM_MB )) MB"
         [[ -f /etc/cdi/nvidia.yaml ]] && ok "CDI config present" \
             || warn "CDI config missing — run: sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml"
     else
@@ -230,7 +267,7 @@ cmd_setup() {
     cp "$SCRIPT_DIR/configs/litellm-config.yaml" "$CONFIG_DIR/litellm-config.yaml"
     ok "Copied litellm-config.yaml"
 
-    if ! command -v nvidia-smi &>/dev/null; then
+    if [[ "$GPU_VENDOR" != "nvidia" ]]; then
         if ! grep -q 'HSA_OVERRIDE_GFX_VERSION' "$HOME/.bashrc" 2>/dev/null; then
             printf '\n# LLM Stack — AMD ROCm\nexport HSA_OVERRIDE_GFX_VERSION=11.5.1\n' \
                 >> "$HOME/.bashrc"
@@ -248,7 +285,7 @@ cmd_setup() {
 
 cmd_pull_image() {
     local -a candidates
-    if command -v nvidia-smi &>/dev/null; then
+    if [[ "$GPU_VENDOR" == "nvidia" ]]; then
         header "Pulling llama.cpp CUDA container image"
         candidates=("${CUDA_IMAGES[@]}")
     else
@@ -303,31 +340,17 @@ cmd_pull_image() {
 # ── Model pulling ─────────────────────────────────────────────────────────────
 
 cmd_pull_models() {
+    header "Pulling model ($MODEL_SIZE_HINT)"
+    log "$MODEL_DESC ($MODEL_FILE)..."
+
     if command -v ramalama &>/dev/null; then
-        if [[ -d "$HOST_DIR" ]] && [[ "$HOSTNAME_SHORT" == "lennon" ]]; then
-            header "Pulling model via ramalama (~6 GB)"
-            log "Qwen3.5-9B UD-Q4_K_XL (~6 GB)..."
-            ramalama pull hf://unsloth/Qwen3.5-9B-GGUF/Qwen3.5-9B-UD-Q4_K_XL.gguf
-        else
-            header "Pulling model via ramalama (~22 GB)"
-            log "Qwen3.5-35B-A3B UD-Q4_K_XL (~22 GB)..."
-            ramalama pull hf://unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf
-        fi
+        ramalama pull "hf://$MODEL_REPO/$MODEL_FILE"
     else
-        header "Pulling model via huggingface-cli"
         local model_dir="$HOME/.local/share/llm-models"
         mkdir -p "$model_dir"
-        if [[ -d "$HOST_DIR" ]] && [[ "$HOSTNAME_SHORT" == "lennon" ]]; then
-            log "Qwen3.5-9B UD-Q4_K_XL (~6 GB)..."
-            huggingface-cli download unsloth/Qwen3.5-9B-GGUF \
-                Qwen3.5-9B-UD-Q4_K_XL.gguf \
-                --local-dir "$model_dir"
-        else
-            log "Qwen3.5-35B-A3B UD-Q4_K_XL (~22 GB)..."
-            huggingface-cli download unsloth/Qwen3.5-35B-A3B-GGUF \
-                Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf \
-                --local-dir "$model_dir"
-        fi
+        log "ramalama not found — using huggingface-cli"
+        huggingface-cli download "$MODEL_REPO" "$MODEL_FILE" \
+            --local-dir "$model_dir"
     fi
     echo ""
 
@@ -392,22 +415,13 @@ _resolve_model_path() {
 cmd_install() {
     log "Resolving model paths..."
 
-    # Host-specific model configuration
-    if [[ -d "$HOST_DIR" ]] && [[ "$HOSTNAME_SHORT" == "lennon" ]]; then
-        declare -A MODEL_STORE_PATH=(
-            [ramalama]="huggingface/unsloth/Qwen3.5-9B-GGUF/Qwen3.5-9B-UD-Q4_K_XL.gguf"
-        )
-        declare -A MODEL_FILENAME=(
-            [ramalama]="Qwen3.5-9B-UD-Q4_K_XL.gguf"
-        )
-    else
-        declare -A MODEL_STORE_PATH=(
-            [ramalama]="huggingface/unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"
-        )
-        declare -A MODEL_FILENAME=(
-            [ramalama]="Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"
-        )
-    fi
+    # Model path derived from auto-detected GPU/VRAM
+    declare -A MODEL_STORE_PATH=(
+        [ramalama]="huggingface/$MODEL_REPO/$MODEL_FILE"
+    )
+    declare -A MODEL_FILENAME=(
+        [ramalama]="$MODEL_FILE"
+    )
 
     local missing=()
     for unit in ramalama; do
@@ -444,7 +458,7 @@ cmd_install() {
     cp "$SCRIPT_DIR"/quadlets/*.container "$QUADLET_DIR"/
     cp "$SCRIPT_DIR"/quadlets/*.volume    "$QUADLET_DIR"/
     if [[ -n "$HOST_QUADLET_SRC" && -d "$HOST_QUADLET_SRC" ]]; then
-        log "Overlaying host-specific quadlets from hosts/$HOSTNAME_SHORT/"
+        log "Overlaying $GPU_PROFILE-specific quadlets from hosts/$GPU_PROFILE/"
         cp "$HOST_QUADLET_SRC"/*.container "$QUADLET_DIR"/ 2>/dev/null || true
         cp "$HOST_QUADLET_SRC"/*.volume    "$QUADLET_DIR"/ 2>/dev/null || true
     fi

@@ -1,6 +1,6 @@
 # ~/.config/containers/systemd/ramalama.container
-# Qwen3.5-9B via llama.cpp CUDA on NVIDIA RTX 4070 Ti
-# Host: lennon.home.arpa (Ryzen 9 3950X, 128 GB DDR4)
+# Qwen3.5-9B via llama.cpp CUDA on NVIDIA GPUs (≤16 GB VRAM)
+# Auto-selected when nvidia-smi is detected and VRAM < 32 GB
 # Managed by: systemctl --user [start|stop|restart|status] ramalama
 
 [Unit]
