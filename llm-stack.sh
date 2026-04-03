@@ -717,8 +717,10 @@ cmd_install() {
             [[ -n "${TUNE_MLOCK:-}" ]] && exec_line+=" $TUNE_MLOCK"
             exec_line+=" --jinja"
             [[ -n "${TUNE_EXTRA_ARGS:-}" ]] && exec_line+=" $TUNE_EXTRA_ARGS"
-            # Replace the entire Exec= line in the quadlet
-            sed -i "/^Exec=/c\\Exec=$exec_line" "$quadlet"
+            # Replace the Exec line and remove any continuation lines
+            # (quadlet files may have multi-line Exec= with \ continuations)
+            sed -i '/^Exec=/,/[^\\]$/{/^Exec=/!d}' "$quadlet"
+            sed -i "s|^Exec=.*|Exec=$exec_line|" "$quadlet"
             ok "Templated Exec line from tune.conf"
         fi
     done

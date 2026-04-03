@@ -27,7 +27,7 @@ ragpipe
   │  9. Attach rag_metadata, emit audit log
   ▼  :8080
 Qwen3.5-35B-A3B (llama-server via RamaLama)
-  │  MoE, 3B active params, ~22 GB, q4_0 KV cache
+  │  model + quant + KV cache selected by auto-tuner
   ▼
 AMD Ryzen AI Max+ 395 (ROCm, gfx1151)
 ```
@@ -83,7 +83,7 @@ The `doc_id` is a deterministic UUID5 derived from the source URI, ensuring the 
 
 ### RamaLama / llama-server (:8080)
 
-Serves the Qwen3.5-35B-A3B model via llama-server. The model uses Mixture of Experts (MoE) with 3B active parameters from 35B total. KV cache uses q4_0 quantization (360 MiB for 65536 ctx with 2 parallel slots), and flash attention is enabled.
+Serves the Qwen3.5-35B-A3B model via llama-server. The model uses Mixture of Experts (MoE) with 3B active parameters from 35B total. KV cache type, context size, and parallel slots are set by the auto-tuner (`./llm-stack.sh tune`). Flash attention is always enabled.
 
 **Image:** `quay.io/ramalama/rocm:latest`
 
@@ -131,7 +131,7 @@ Chat interface. Connects to LiteLLM as its OpenAI backend, so all queries automa
 - **CPU:** AMD Ryzen AI Max+ 395 (Zen 5, 16 cores / 32 threads)
 - **GPU:** Radeon 8060S (RDNA 3.5, gfx1151, ROCm)
 - **Memory:** 128 GB unified (64 GB VRAM + 64 GB GTT + 62 GB system RAM at 64/64 BIOS split)
-- **KV cache:** q4_0 quantized, 360 MiB for 65536 context with 2 parallel slots
+- **KV cache:** type and size set by auto-tuner (tune.conf)
 - **SELinux:** Enforcing on UBI containers. `SecurityLabelDisable=true` only on upstream Debian-based images (qdrant, litellm) and GPU-access containers (ramalama)
 
 ## Container images

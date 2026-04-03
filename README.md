@@ -10,7 +10,7 @@ Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB
 |---|---|---|---|
 | postgres | `quay.io/sclorg/postgresql-16-c9s` | 5432 | LiteLLM state + document store |
 | qdrant | `docker.io/qdrant/qdrant` | 6333 | Vector search (int8 scalar quantization) |
-| ramalama | `quay.io/ramalama/rocm:latest` | 8080 | Qwen3.5-35B-A3B UD-Q4\_K\_XL (~22 GB, q8\_0 KV cache) |
+| ramalama | `quay.io/ramalama/rocm:latest` | 8080 | Qwen3.5 (model + quant selected by auto-tuner) |
 | ragpipe | ghcr.io/aclater/ragpipe (UBI9/python-311) | 8090 | Search → hydrate → rerank → ground → cite → inject |
 | litellm | `ghcr.io/berriai/litellm:main-stable` | 4000 | OpenAI-compatible proxy |
 | open-webui | `ghcr.io/open-webui/open-webui:v0.8.6` | 3000 | Chat UI, pinned to v0.8.6 |
@@ -23,7 +23,7 @@ Models are pulled and managed by [RamaLama](https://github.com/containers/ramala
 - Fedora 43
 - AMD Ryzen AI Max+ 395 (gfx1151) or similar AMD iGPU/dGPU with ROCm support
 - ~25 GB free disk space for the model
-- **BIOS: UMA frame buffer set to 64 GB — model uses ~22 GB VRAM, leaving ~42 GB VRAM headroom for KV cache and ~62 GB system RAM**
+- **BIOS: UMA frame buffer set to 64 GB — model size depends on auto-tuner selection — run tune to optimize**
 
 ## First-time setup
 
@@ -34,9 +34,9 @@ chmod +x llm-stack.sh
 
 ./llm-stack.sh deps          # install system packages (sudo)
 ./llm-stack.sh groups        # add user to render/video (sudo + reboot)
-./llm-stack.sh setup         # verify GPU, write configs
+./llm-stack.sh setup         # verify GPU, auto-tune, write configs
 ./llm-stack.sh pull-image    # pull the RamaLama ROCm container image
-./llm-stack.sh pull-models   # download model (~22 GB)
+./llm-stack.sh pull-models   # download model (size depends on tune)
 ./llm-stack.sh build         # build ragpipe (from ~/git/ragpipe) and rag-watcher images
 ./llm-stack.sh install       # install quadlets to systemd + fix SELinux labels
 ./llm-stack.sh up            # start everything

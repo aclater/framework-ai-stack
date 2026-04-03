@@ -2,12 +2,18 @@
 
 Local AI stack for Fedora 43. LLM inference with live RAG from Google Drive, git repos, and web URLs. Corpus-preferring grounding with citation validation.
 
-## GPU auto-detection
-`llm-stack.sh` auto-detects GPU vendor and VRAM at startup:
-- **NVIDIA** (CUDA): uses `hosts/nvidia/quadlets/` overlay, Qwen3.5-9B for ≤16 GB VRAM
-- **AMD** (ROCm): uses base `quadlets/`, Qwen3.5-35B-A3B for ≥32 GB VRAM
+## Auto-tuning
+`./llm-stack.sh tune` detects hardware and selects optimal parameters:
+- GPU vendor + VRAM → model family (35B-A3B for ≥32 GB, 9B for smaller)
+- VRAM budget → quantization (Q8 > Q6 > Q4, highest that fits)
+- Remaining VRAM → KV cache type (q8_0 if headroom, q4_0 if tight)
+- System RAM + VRAM → batch sizes, mlock, context size
+- CPU cores → thread count (physical cores, not HT)
+- Writes `~/.config/llm-stack/tune.conf`, consumed by `install`
+- `retune` re-runs tuning + restart without re-downloading the model
+- `setup` calls `tune` automatically on first run
 
-Detection is fully automatic — no hostname or manual config needed. Per-profile overrides live in `hosts/<profile>/quadlets/` and are overlaid during `./llm-stack.sh install`.
+Per-GPU-profile overrides live in `hosts/<profile>/quadlets/` and are overlaid during install. Currently: `hosts/nvidia/` for CUDA systems.
 
 ## Architecture
 ```
@@ -39,7 +45,7 @@ rag-watcher (polls Drive, git, web → extract → chunk → embed)
 - Retrieval: Qdrant search → docstore hydration → reranker → grounding → LLM
 - Qdrant collection uses int8 scalar quantization (always_ram for HNSW rescoring)
 - doc_id is deterministic UUID5 from source URI — re-ingest is idempotent
-- KV cache uses q4_0 quantization (360 MiB for 65536 ctx with 2 parallel slots)
+- KV cache type and model quantization selected by auto-tuner (see tune.conf)
 - Empty retrieval is not an error — model answers from general knowledge with prefix
 - Audit log captures grounding decisions without logging text content
 
