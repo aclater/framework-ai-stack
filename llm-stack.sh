@@ -659,6 +659,7 @@ cmd_install() {
     )
 
     local missing=()
+    # shellcheck disable=SC2043
     for unit in ramalama; do
         local resolved
         resolved=$(_resolve_model_path "${MODEL_STORE_PATH[$unit]}" "${MODEL_FILENAME[$unit]}")
@@ -698,6 +699,7 @@ cmd_install() {
         cp "$HOST_QUADLET_SRC"/*.volume    "$QUADLET_DIR"/ 2>/dev/null || true
     fi
 
+    # shellcheck disable=SC2043
     for unit in ramalama; do
         local resolved
         resolved=$(_resolve_model_path "${MODEL_STORE_PATH[$unit]}" "${MODEL_FILENAME[$unit]}")
@@ -735,7 +737,7 @@ cmd_install() {
         | grep -ivE "^#" | grep -iE "error|unsupported" || true)
     if [[ -n "$errors" ]]; then
         warn "Quadlet generator reported issues:"
-        echo "$errors" | sed 's/^/    /'
+        printf "    %s\n" "$errors"
         fail "Fix the above errors before starting services"
     fi
 

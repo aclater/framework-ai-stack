@@ -3,4 +3,8 @@
 # SC2015: A && B || C is not if-then-else — used intentionally for fallbacks
 # SC2034: Variable appears unused — some vars are used by sourced/eval'd code
 # SC2320: Redirect masking exit code — intentional in shift 2>/dev/null || true
-disable=SC2086,SC2015,SC2034,SC2320
+# SC2029: SSH commands intentionally expand variables client-side
+# SC2016: Single-quoted strings with $ are intentional in sed/test assertions
+# SC1090: Non-constant source — used for dynamic config sourcing
+# SC2154: Variables set by dialog/sourced files, not visible to ShellCheck
+disable=SC2086,SC2015,SC2034,SC2320,SC2029,SC2016,SC1090,SC2154
