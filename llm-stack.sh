@@ -11,10 +11,25 @@ QUADLET_DIR="$HOME/.config/containers/systemd"
 CONFIG_DIR="$HOME/.config/llm-stack"
 UNITS=(postgres qdrant ramalama ragpipe litellm rag-watcher open-webui)
 
-# Registry candidates for the ROCm image, in preference order
+# ── Host detection ───────────────────────────────────────────────────────────
+# Per-host overrides live in hosts/<hostname>/quadlets/ and are overlaid
+# onto the base quadlets/ during install. Only files that differ need to
+# exist in the host directory.
+HOSTNAME_SHORT="$(hostname -s)"
+HOST_DIR="$SCRIPT_DIR/hosts/$HOSTNAME_SHORT"
+if [[ -d "$HOST_DIR" ]]; then
+    HOST_QUADLET_SRC="$HOST_DIR/quadlets"
+else
+    HOST_QUADLET_SRC=""
+fi
+
+# Registry candidates for the inference image, in preference order
 ROCM_IMAGES=(
     "quay.io/ramalama/rocm:latest"
     "ghcr.io/ggml-org/llama.cpp:full-rocm"
+)
+CUDA_IMAGES=(
+    "ghcr.io/ggml-org/llama.cpp:server-cuda"
 )
 
 # ── Colours ───────────────────────────────────────────────────────────────────
@@ -36,7 +51,7 @@ header() { echo -e "\n${BOLD}━━━  $*  ━━━${RESET}\n"; }
 cmd_help() {
     cat <<EOF
 
-${BOLD}llm-stack.sh${RESET} — local LLM stack (Fedora 43 · AI Max+ 395)
+${BOLD}llm-stack.sh${RESET} — local LLM stack (Fedora 43 · host: $HOSTNAME_SHORT)
 
 ${BOLD}First-time setup (run in order):${RESET}
   deps          install system packages via dnf       [needs sudo]
@@ -79,11 +94,15 @@ cmd_deps() {
     header "Installing system dependencies"
     [[ "$(id -u)" == "0" ]] && fail "Run as your regular user, not root"
 
-    local packages=(
-        podman podman-compose ramalama
-        rocm rocm-hip rocm-runtime rocminfo
-        amd-gpu-firmware curl python3 git
-    )
+    local packages=(podman podman-compose curl python3 git)
+
+    if command -v nvidia-smi &>/dev/null; then
+        log "NVIDIA GPU detected — adding CUDA packages"
+        packages+=(nvidia-container-toolkit)
+    else
+        log "AMD GPU assumed — adding ROCm packages"
+        packages+=(ramalama rocm rocm-hip rocm-runtime rocminfo amd-gpu-firmware)
+    fi
 
     sudo dnf makecache --refresh
     sudo dnf install -y "${packages[@]}"
@@ -145,37 +164,54 @@ cmd_setup() {
 
     # GPU
     echo ""
-    log "Checking GPU / ROCm..."
-    for dev in /dev/kfd /dev/dri; do
-        [[ -e "$dev" ]] && ok "$dev present" || warn "$dev MISSING"
-    done
+    if command -v nvidia-smi &>/dev/null; then
+        log "Checking GPU / CUDA..."
+        local gpu_name
+        gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
+        if [[ -n "$gpu_name" ]]; then
+            ok "NVIDIA GPU: $gpu_name"
+            local vram
+            vram=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader 2>/dev/null | head -1)
+            ok "VRAM: $vram"
+        else
+            warn "nvidia-smi found no GPU"
+        fi
+        [[ -f /etc/cdi/nvidia.yaml ]] && ok "CDI config present" \
+            || warn "CDI config missing — run: sudo nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml"
+    else
+        log "Checking GPU / ROCm..."
+        for dev in /dev/kfd /dev/dri; do
+            [[ -e "$dev" ]] && ok "$dev present" || warn "$dev MISSING"
+        done
 
-    if command -v rocminfo &>/dev/null; then
-        local gfx
-        gfx=$(rocminfo 2>/dev/null | grep -oP 'gfx[0-9a-f]+' | head -1)
-        if [[ -n "$gfx" ]]; then
-            ok "ROCm GPU: $gfx"
-            if [[ "$gfx" == "gfx1151" ]]; then
-                echo ""
-                echo -e "  ${YELLOW}┌─ NOTE: gfx1151 (AI Max+ 395) ────────────────────────────────────┐${RESET}"
-                echo -e "  ${YELLOW}│${RESET} ROCm 6.4.x in Fedora 43 has known issues on gfx1151.           ${YELLOW}│${RESET}"
-                echo -e "  ${YELLOW}│${RESET} HSA_OVERRIDE_GFX_VERSION=11.5.1 is set in your env file.       ${YELLOW}│${RESET}"
-                echo -e "  ${YELLOW}│${RESET} Fix expected in ROCm 7.x (Fedora 44).                          ${YELLOW}│${RESET}"
-                echo -e "  ${YELLOW}└───────────────────────────────────────────────────────────────────┘${RESET}"
+        if command -v rocminfo &>/dev/null; then
+            local gfx
+            gfx=$(rocminfo 2>/dev/null | grep -oP 'gfx[0-9a-f]+' | head -1)
+            if [[ -n "$gfx" ]]; then
+                ok "ROCm GPU: $gfx"
+                if [[ "$gfx" == "gfx1151" ]]; then
+                    echo ""
+                    echo -e "  ${YELLOW}┌─ NOTE: gfx1151 (AI Max+ 395) ────────────────────────────────────┐${RESET}"
+                    echo -e "  ${YELLOW}│${RESET} ROCm 6.4.x in Fedora 43 has known issues on gfx1151.           ${YELLOW}│${RESET}"
+                    echo -e "  ${YELLOW}│${RESET} HSA_OVERRIDE_GFX_VERSION=11.5.1 is set in your env file.       ${YELLOW}│${RESET}"
+                    echo -e "  ${YELLOW}│${RESET} Fix expected in ROCm 7.x (Fedora 44).                          ${YELLOW}│${RESET}"
+                    echo -e "  ${YELLOW}└───────────────────────────────────────────────────────────────────┘${RESET}"
+                fi
+            else
+                warn "rocminfo found no GPU — check: lsmod | grep amdgpu"
             fi
         else
-            warn "rocminfo found no GPU — check: lsmod | grep amdgpu"
+            warn "No GPU tooling found — install nvidia-smi or rocminfo"
         fi
-    else
-        warn "rocminfo not found — install: sudo dnf install rocminfo"
     fi
 
-    local accel
-    accel=$(ramalama info 2>/dev/null \
-        | python3 -c "import sys,json; print(json.load(sys.stdin).get('Accelerator','unknown'))" \
-        2>/dev/null || echo "unknown")
-    echo "  ramalama accelerator: $accel"
-    [[ "$accel" == "hip" ]] || warn "Expected 'hip' — models may run on CPU"
+    if command -v ramalama &>/dev/null; then
+        local accel
+        accel=$(ramalama info 2>/dev/null \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('Accelerator','unknown'))" \
+            2>/dev/null || echo "unknown")
+        echo "  ramalama accelerator: $accel"
+    fi
 
     # Directories and config
     echo ""
@@ -194,12 +230,14 @@ cmd_setup() {
     cp "$SCRIPT_DIR/configs/litellm-config.yaml" "$CONFIG_DIR/litellm-config.yaml"
     ok "Copied litellm-config.yaml"
 
-    if ! grep -q 'HSA_OVERRIDE_GFX_VERSION' "$HOME/.bashrc" 2>/dev/null; then
-        printf '\n# LLM Stack — AMD AI Max+ 395 ROCm\nexport HSA_OVERRIDE_GFX_VERSION=11.5.1\n' \
-            >> "$HOME/.bashrc"
-        ok "Added ROCm env vars to ~/.bashrc"
-    else
-        ok "ROCm env vars already in ~/.bashrc"
+    if ! command -v nvidia-smi &>/dev/null; then
+        if ! grep -q 'HSA_OVERRIDE_GFX_VERSION' "$HOME/.bashrc" 2>/dev/null; then
+            printf '\n# LLM Stack — AMD ROCm\nexport HSA_OVERRIDE_GFX_VERSION=11.5.1\n' \
+                >> "$HOME/.bashrc"
+            ok "Added ROCm env vars to ~/.bashrc"
+        else
+            ok "ROCm env vars already in ~/.bashrc"
+        fi
     fi
 
     echo ""
@@ -209,10 +247,17 @@ cmd_setup() {
 # ── Image pulling (with fallback) ─────────────────────────────────────────────
 
 cmd_pull_image() {
-    header "Pulling RamaLama ROCm container image"
+    local -a candidates
+    if command -v nvidia-smi &>/dev/null; then
+        header "Pulling llama.cpp CUDA container image"
+        candidates=("${CUDA_IMAGES[@]}")
+    else
+        header "Pulling RamaLama ROCm container image"
+        candidates=("${ROCM_IMAGES[@]}")
+    fi
 
     local pulled=""
-    for image in "${ROCM_IMAGES[@]}"; do
+    for image in "${candidates[@]}"; do
         local registry="${image%%/*}"
         log "Trying: $image"
         log "Checking registry: $registry"
@@ -258,10 +303,32 @@ cmd_pull_image() {
 # ── Model pulling ─────────────────────────────────────────────────────────────
 
 cmd_pull_models() {
-    header "Pulling model via ramalama (~22 GB)"
-
-    log "Qwen3.5-35B-A3B UD-Q4_K_XL (~22 GB)..."
-    ramalama pull hf://unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf
+    if command -v ramalama &>/dev/null; then
+        if [[ -d "$HOST_DIR" ]] && [[ "$HOSTNAME_SHORT" == "lennon" ]]; then
+            header "Pulling model via ramalama (~6 GB)"
+            log "Qwen3.5-9B UD-Q4_K_XL (~6 GB)..."
+            ramalama pull hf://unsloth/Qwen3.5-9B-GGUF/Qwen3.5-9B-UD-Q4_K_XL.gguf
+        else
+            header "Pulling model via ramalama (~22 GB)"
+            log "Qwen3.5-35B-A3B UD-Q4_K_XL (~22 GB)..."
+            ramalama pull hf://unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf
+        fi
+    else
+        header "Pulling model via huggingface-cli"
+        local model_dir="$HOME/.local/share/llm-models"
+        mkdir -p "$model_dir"
+        if [[ -d "$HOST_DIR" ]] && [[ "$HOSTNAME_SHORT" == "lennon" ]]; then
+            log "Qwen3.5-9B UD-Q4_K_XL (~6 GB)..."
+            huggingface-cli download unsloth/Qwen3.5-9B-GGUF \
+                Qwen3.5-9B-UD-Q4_K_XL.gguf \
+                --local-dir "$model_dir"
+        else
+            log "Qwen3.5-35B-A3B UD-Q4_K_XL (~22 GB)..."
+            huggingface-cli download unsloth/Qwen3.5-35B-A3B-GGUF \
+                Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf \
+                --local-dir "$model_dir"
+        fi
+    fi
     echo ""
 
     log "Setting SELinux labels on model files..."
@@ -323,20 +390,33 @@ _resolve_model_path() {
 }
 
 cmd_install() {
-    log "Resolving model paths from ramalama store..."
+    log "Resolving model paths..."
 
-    # Map each quadlet to its store path and filename
-    declare -A MODEL_STORE_PATH=(
-        [ramalama]="huggingface/unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"
-    )
-    declare -A MODEL_FILENAME=(
-        [ramalama]="Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"
-    )
+    # Host-specific model configuration
+    if [[ -d "$HOST_DIR" ]] && [[ "$HOSTNAME_SHORT" == "lennon" ]]; then
+        declare -A MODEL_STORE_PATH=(
+            [ramalama]="huggingface/unsloth/Qwen3.5-9B-GGUF/Qwen3.5-9B-UD-Q4_K_XL.gguf"
+        )
+        declare -A MODEL_FILENAME=(
+            [ramalama]="Qwen3.5-9B-UD-Q4_K_XL.gguf"
+        )
+    else
+        declare -A MODEL_STORE_PATH=(
+            [ramalama]="huggingface/unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"
+        )
+        declare -A MODEL_FILENAME=(
+            [ramalama]="Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"
+        )
+    fi
 
     local missing=()
     for unit in ramalama; do
         local resolved
         resolved=$(_resolve_model_path "${MODEL_STORE_PATH[$unit]}" "${MODEL_FILENAME[$unit]}")
+        # Also check ~/.local/share/llm-models/ for non-ramalama installs
+        if [[ -z "$resolved" ]]; then
+            resolved=$(find "$HOME/.local/share/llm-models" -name "${MODEL_FILENAME[$unit]}" -type f 2>/dev/null | head -1)
+        fi
         if [[ -z "$resolved" ]]; then
             warn "Model not found for $unit — run './llm-stack.sh pull-models' first"
             missing+=("$unit")
@@ -360,9 +440,14 @@ cmd_install() {
 
     log "Installing quadlets to $QUADLET_DIR..."
 
-    # Copy source quadlets then patch Mount= lines with resolved paths
+    # Copy base quadlets, then overlay host-specific files
     cp "$SCRIPT_DIR"/quadlets/*.container "$QUADLET_DIR"/
     cp "$SCRIPT_DIR"/quadlets/*.volume    "$QUADLET_DIR"/
+    if [[ -n "$HOST_QUADLET_SRC" && -d "$HOST_QUADLET_SRC" ]]; then
+        log "Overlaying host-specific quadlets from hosts/$HOSTNAME_SHORT/"
+        cp "$HOST_QUADLET_SRC"/*.container "$QUADLET_DIR"/ 2>/dev/null || true
+        cp "$HOST_QUADLET_SRC"/*.volume    "$QUADLET_DIR"/ 2>/dev/null || true
+    fi
 
     for unit in ramalama; do
         local resolved
