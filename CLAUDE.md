@@ -87,6 +87,16 @@ Configured via environment variables in `~/.config/llm-stack/env`:
 - [Operations](docs/operations.md) — deployment, monitoring, troubleshooting
 - [ADRs](docs/adr/) — architecture decision records
 
+## CI / code quality
+- **Ruff** (`ruff.toml`) — Python linter + formatter for `rag-proxy/` and `rag-watcher/`
+- **ShellCheck** (`.shellcheckrc`) — shell linter for `llm-stack.sh`, `tests/run-tests.sh`, `rag-watcher/setup.sh`
+- **Hadolint** (`.hadolint.yaml`) — Containerfile linter
+- **yamllint** — YAML lint for `configs/`
+- **pip-audit** — dependency vulnerability scanning
+- **pytest** — unit tests in `rag-proxy/test_*.py` and `rag-watcher/test_*.py`
+- Run `ruff check && ruff format --check` before committing Python changes
+- Run `bash tests/run-tests.sh` before committing shell/quadlet/config changes
+
 ## Security notes
 - LiteLLM: pinned to main-stable (v1.82.3-stable.patch.2). v1.82.7/v1.82.8 compromised. Upgrade to v1.83.0-stable when available. See ADR-009.
 - Do NOT set LLAMA_HIP_UMA=1 — forces GTT instead of VRAM. See ADR-010.

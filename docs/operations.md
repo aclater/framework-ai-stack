@@ -208,6 +208,34 @@ If queries show "thinking" but never produce visible output, check the rag-proxy
 
 If `ramalama` shows >100% CPU at idle, check that `GPU_MAX_HW_QUEUES=1` is set in the container environment. This is a gfx1151 busy-spin mitigation.
 
+## Development
+
+### Linting and formatting
+
+Python code is linted and formatted by [Ruff](https://docs.astral.sh/ruff/) (`ruff.toml`). Shell scripts are checked by ShellCheck (`.shellcheckrc`). Containerfiles are validated by Hadolint (`.hadolint.yaml`).
+
+```bash
+ruff check                   # lint Python
+ruff format --check          # check Python formatting
+ruff check --fix && ruff format  # auto-fix everything
+```
+
+### Running tests
+
+```bash
+cd rag-proxy && python -m pytest -v    # 54 tests — grounding, docstore, reranker
+cd rag-watcher && python -m pytest -v  # 11 tests — extraction, point IDs, state
+bash tests/run-tests.sh                # 86 tests — script, quadlets, configs, URLs
+```
+
+### CI workflows
+
+GitHub Actions run on every push to `main` and on pull requests:
+
+- **CI** (`.github/workflows/ci.yml`) — Ruff lint/format, ShellCheck, yamllint, pytest (both components), shell tests
+- **Containerfile lint** (`.github/workflows/container.yml`) — Hadolint on `rag-proxy/Containerfile` and `rag-watcher/Containerfile`, triggered only when Containerfiles change
+- **Security scan** (`.github/workflows/security.yml`) — pip-audit against both `requirements.txt` files, runs on PRs and weekly (Monday 08:00 UTC)
+
 ## Configuration reference
 
 All configuration is via environment variables in `~/.config/llm-stack/env` and the individual quadlet files.

@@ -84,6 +84,25 @@ Available model aliases (all route to Qwen3.5-35B-A3B on :8080):
 | `code` | Completion, debugging, generation |
 | `fast` | Quick queries, drafting |
 
+## CI / code quality
+
+GitHub Actions run on every push and PR:
+
+| Workflow | Tools | What it checks |
+|----------|-------|----------------|
+| [CI](.github/workflows/ci.yml) | Ruff, ShellCheck, yamllint, pytest | Python lint + format, shell lint, YAML lint, unit tests |
+| [Containerfile lint](.github/workflows/container.yml) | Hadolint | Containerfile best practices |
+| [Security scan](.github/workflows/security.yml) | pip-audit | Known vulnerabilities in Python dependencies |
+
+Run locally:
+
+```bash
+ruff check && ruff format --check   # Python lint + format
+cd rag-proxy && python -m pytest -v # rag-proxy tests (54)
+cd rag-watcher && python -m pytest -v # rag-watcher tests (11)
+bash tests/run-tests.sh             # shell tests (86)
+```
+
 ## Documentation
 
 | Document | Description |
