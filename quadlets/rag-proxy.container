@@ -27,7 +27,7 @@ Environment=QDRANT_URL=http://host.containers.internal:6333
 Environment=QDRANT_COLLECTION=documents
 # fastembed uses ONNX Runtime (CPU-only, no PyTorch) — no GPU segfault risk
 Environment=EMBED_MODEL=BAAI/bge-base-en-v1.5
-Environment=RAG_TOP_K=20
+Environment=RAG_TOP_K=40
 Environment=RAG_PROXY_PORT=8090
 
 # Document store — hydrates chunk text from Postgres at query time
@@ -37,7 +37,7 @@ Environment=DOCSTORE_URL=postgresql://litellm:litellm@host.containers.internal:5
 # Reranker — lightweight ONNX model (22M params, sub-second on CPU)
 Environment=RERANKER_ENABLED=true
 Environment=RERANKER_MODEL=Xenova/ms-marco-MiniLM-L-6-v2
-Environment=RERANKER_TOP_N=5
+Environment=RERANKER_TOP_N=15
 
 # Thinking budget — modest token budget for reasoning across sources
 # without unconstrained latency
