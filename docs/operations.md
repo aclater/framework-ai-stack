@@ -109,7 +109,7 @@ Key fields: `points_count`, `status` (should be `green`).
 podman exec postgres psql -U litellm -c "SELECT COUNT(*) FROM chunks;"
 ```
 
-### RAG proxy health
+### ragpipe health
 
 ```bash
 curl -s http://127.0.0.1:8090/v1/models
@@ -167,7 +167,7 @@ podman logs ramalama 2>&1 | tail -5
 
 If the model is still loading, wait — Qwen3.5-35B-A3B takes ~15 seconds to load.
 
-### RAG proxy returning empty responses
+### ragpipe returning empty responses
 
 1. Check if Qdrant has data: `curl -s http://127.0.0.1:6333/collections/documents`
 2. Check if the docstore has chunks: `podman exec postgres psql -U litellm -c "SELECT COUNT(*) FROM chunks;"`

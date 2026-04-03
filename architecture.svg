@@ -79,7 +79,7 @@
 <text class="th c-sand-text" x="590" y="128" text-anchor="middle" dominant-baseline="central">RAG watcher</text>
 <text class="ts c-sand-text" x="590" y="146" text-anchor="middle" dominant-baseline="central">extract · chunk · embed · persist</text>
 
-<!-- Arrow LiteLLM → RAG proxy -->
+<!-- Arrow LiteLLM → ragpipe -->
 <line x1="210" y1="160" x2="210" y2="190" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
 <text class="ts muted" x="225" y="177" dominant-baseline="central">:8090</text>
 
@@ -91,9 +91,9 @@
 <line x1="640" y1="160" x2="640" y2="190" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
 <text class="tl muted" x="640" y="177" text-anchor="middle" dominant-baseline="central">text</text>
 
-<!-- RAG proxy box (taller to show full pipeline) -->
+<!-- ragpipe box (taller to show full pipeline) -->
 <rect x="30" y="192" width="360" height="118" rx="8" stroke-width="0.5" class="c-coral-fill"/>
-<text class="th c-coral-text" x="210" y="210" text-anchor="middle" dominant-baseline="central">RAG proxy</text>
+<text class="th c-coral-text" x="210" y="210" text-anchor="middle" dominant-baseline="central">ragpipe</text>
 <text class="ts c-coral-text" x="210" y="228" text-anchor="middle" dominant-baseline="central">1. Qdrant vector search (20 candidates)</text>
 <text class="ts c-coral-text" x="210" y="244" text-anchor="middle" dominant-baseline="central">2. Docstore hydration (batch text lookup)</text>
 <text class="ts c-coral-text" x="210" y="260" text-anchor="middle" dominant-baseline="central">3. Cross-encoder reranker (MiniLM) → top 5</text>
@@ -110,13 +110,13 @@
 <text class="th c-amber-text" x="677" y="214" text-anchor="middle" dominant-baseline="central">Document store</text>
 <text class="ts c-amber-text" x="677" y="234" text-anchor="middle" dominant-baseline="central">Postgres · :5432</text>
 
-<!-- Arrow RAG proxy → Qdrant -->
+<!-- Arrow ragpipe → Qdrant -->
 <line x1="390" y1="222" x2="418" y2="222" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
 
-<!-- Arrow RAG proxy → docstore -->
+<!-- Arrow ragpipe → docstore -->
 <line x1="390" y1="244" x2="593" y2="244" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
 
-<!-- Arrow RAG proxy → model -->
+<!-- Arrow ragpipe → model -->
 <line x1="210" y1="310" x2="210" y2="346" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>
 <text class="ts muted" x="225" y="330" dominant-baseline="central">:8080</text>
 

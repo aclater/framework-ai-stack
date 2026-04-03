@@ -23,7 +23,7 @@ Qdrant stores only reference payloads:
 }
 ```
 
-Full chunk text lives in a Postgres document store (the `chunks` table), keyed on `(doc_id, chunk_id)`. At query time, the RAG proxy batch-hydrates text from the document store after Qdrant returns candidate references.
+Full chunk text lives in a Postgres document store (the `chunks` table), keyed on `(doc_id, chunk_id)`. At query time, ragpipe batch-hydrates text from the document store after Qdrant returns candidate references.
 
 Additionally, the Qdrant collection uses int8 scalar quantization (`quantile: 0.99`, `always_ram: true`) to further reduce vector memory footprint. `always_ram` is required because HNSW rescoring needs quantized vectors in RAM for accurate distance computation.
 

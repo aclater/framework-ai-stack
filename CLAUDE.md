@@ -4,7 +4,7 @@ Local AI stack on harrison.home.arpa (Ryzen AI Max+ 395, Fedora 43). LLM inferen
 
 ## Architecture
 ```
-clients → LiteLLM (:4000) → RAG proxy (:8090) → model (:8080)
+clients → LiteLLM (:4000) → ragpipe (:8090) → model (:8080)
                                   |
                           Qdrant search (:6333)
                                   |
@@ -38,7 +38,7 @@ rag-watcher (polls Drive, git, web → extract → chunk → embed)
 
 ## Endpoints
 - LiteLLM proxy: http://localhost:4000 (key: sk-llm-stack-local)
-- RAG proxy:     http://localhost:8090 (search + hydrate + rerank + ground + inject)
+- ragpipe:     http://localhost:8090 (search + hydrate + rerank + ground + inject)
 - Qwen3.5-35B:  http://localhost:8080 (plain model)
 - Qdrant:        http://localhost:6333
 - Open WebUI:    http://localhost:3000
@@ -53,7 +53,7 @@ journalctl --user -u qdrant -f
 ```
 
 ## Model aliases
-All aliases route through RAG proxy → Qwen3.5-35B-A3B on :8080:
+All aliases route through ragpipe → Qwen3.5-35B-A3B on :8080:
 - default: general use
 - reasoning: multi-step problems, chain-of-thought
 - code: completion, debugging, generation
@@ -65,7 +65,7 @@ Configured via environment variables in `~/.config/llm-stack/env`:
 - `REPO_SOURCES` — JSON list: `[{"url": "https://...", "glob": "**/*.md"}]`
 - `WEB_SOURCES` — JSON list: `["https://example.com/docs"]`
 
-## RAG proxy configuration
+## ragpipe configuration
 - `RERANKER_ENABLED` — true/false (default: true)
 - `RERANKER_MODEL` — cross-encoder model (default: cross-encoder/ms-marco-MiniLM-L-6-v2)
 - `RERANKER_DEVICE` — cpu/cuda (default: cpu — GPU segfaults on gfx1151, see ADR-013)

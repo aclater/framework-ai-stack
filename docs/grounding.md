@@ -2,7 +2,7 @@
 
 ## Principle: corpus-preferring with transparent fallback
 
-The RAG proxy implements a grounding strategy where retrieved documents are the primary source of truth, but the model may draw on general knowledge when the corpus is silent. The key requirement is **transparency** — the caller always knows whether the answer came from the corpus or general knowledge.
+ragpipe implements a grounding strategy where retrieved documents are the primary source of truth, but the model may draw on general knowledge when the corpus is silent. The key requirement is **transparency** — the caller always knows whether the answer came from the corpus or general knowledge.
 
 This is intentionally not a strict "only answer from documents" policy. A strict policy would refuse to answer any question not covered by the corpus, which is unhelpful for users who expect a knowledgeable assistant. Instead, the model answers from general knowledge when needed but explicitly marks those answers so callers can assess confidence.
 

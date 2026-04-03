@@ -4,7 +4,7 @@
 
 framework-ai-stack is a local AI inference platform with live retrieval-augmented generation (RAG). It runs on a single Framework Desktop (AMD Ryzen AI Max+ 395, 128 GB unified memory, Fedora 43) as rootless Podman containers managed by systemd quadlets.
 
-The system serves a Qwen3.5-35B-A3B model behind a RAG proxy that automatically enriches every query with relevant content from a curated document corpus. Documents are ingested from Google Drive, git repositories, and web URLs without requiring model restarts.
+The system serves a Qwen3.5-35B-A3B model behind a ragpipe that automatically enriches every query with relevant content from a curated document corpus. Documents are ingested from Google Drive, git repositories, and web URLs without requiring model restarts.
 
 ## Request flow
 
@@ -15,7 +15,7 @@ Client (Claude Code, Open WebUI, curl)
 LiteLLM proxy
   │  Routes all aliases (default, reasoning, code, fast)
   ▼  :8090
-RAG proxy
+ragpipe
   │  1. Embed the user's query
   │  2. Search Qdrant for top-K candidate vectors
   │  3. Batch-hydrate chunk text from the document store
@@ -53,11 +53,11 @@ Qdrant (vectors) + Postgres (chunk text)
 
 ### LiteLLM proxy (:4000)
 
-OpenAI-compatible API gateway. Routes all model aliases to the RAG proxy. Provides a single endpoint for all clients. Backed by Postgres for state persistence.
+OpenAI-compatible API gateway. Routes all model aliases to the ragpipe. Provides a single endpoint for all clients. Backed by Postgres for state persistence.
 
 **Image:** `ghcr.io/berriai/litellm:main-stable`
 
-### RAG proxy (:8090)
+### ragpipe (:8090)
 
 The core intelligence layer. Intercepts chat completion requests, performs retrieval, reranking, and citation-aware context injection, then post-processes the response with grounding classification and citation validation. Both the embedding model and the reranker run on CPU — ROCm PyTorch segfaults on gfx1151 for sentence-transformers models (see ADR-013).
 
@@ -114,7 +114,7 @@ Chat interface. Connects to LiteLLM as its OpenAI backend, so all queries automa
 | 5432 | PostgreSQL | PostgreSQL |
 | 6333 | Qdrant | HTTP |
 | 8080 | llama-server | HTTP (OpenAI API) |
-| 8090 | RAG proxy | HTTP (OpenAI API) |
+| 8090 | ragpipe | HTTP (OpenAI API) |
 
 ## Data stores
 
