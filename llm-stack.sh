@@ -283,10 +283,10 @@ cmd_pull_models() {
 cmd_build() {
     header "Building container images"
 
-    log "Building ragpipe image..."
-    podman build -t localhost/ragpipe:latest "$HOME/git/ragpipe/" \
-        && ok "localhost/ragpipe:latest" \
-        || fail "ragpipe build failed"
+    log "Pulling ragpipe image..."
+    podman pull ghcr.io/aclater/ragpipe:main \
+        && ok "ghcr.io/aclater/ragpipe:main" \
+        || fail "ragpipe pull failed"
 
     log "Building rag-watcher image..."
     podman build -t localhost/rag-watcher:latest "$SCRIPT_DIR/rag-watcher/" \

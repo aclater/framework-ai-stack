@@ -14,7 +14,7 @@ Requires=qdrant.service ragpipe.service
 Image=localhost/rag-watcher:latest
 
 Volume=%h/git/framework-ai-stack/rag-watcher:/app:ro,z
-Volume=%h/git/ragpipe/docstore.py:/app/docstore.py:ro,z
+Volume=%h/git/ragpipe/ragpipe/docstore.py:/app/docstore.py:ro,z
 Volume=%h/.config/ramalama/gdrive-sa.json:/run/secrets/gdrive-sa.json:ro,z
 Volume=rag-staging:/staging:Z
 

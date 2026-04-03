@@ -10,14 +10,11 @@ Wants=network-online.target
 Requires=qdrant.service postgres.service
 
 [Container]
-# Pre-built image with deps + models baked in (see github.com/aclater/ragpipe)
-# Build: podman build -t localhost/ragpipe ~/git/ragpipe/
-Image=localhost/ragpipe:latest
+# Published image from ghcr.io — models baked in at build time
+Image=ghcr.io/aclater/ragpipe:main
 
-Volume=%h/git/ragpipe:/app:ro,z
-
-# Writable model cache for fastembed ONNX models
-Volume=ragpipe-model-cache:/opt/app-root/src/.cache:Z
+# Writable model cache for ONNX models (persists across restarts)
+Volume=ragpipe-model-cache:/home/default/.cache/ragpipe:Z
 
 # Run as non-root user (default in UBI Python images, UID 1001)
 User=1001
@@ -25,8 +22,6 @@ User=1001
 Environment=MODEL_URL=http://host.containers.internal:8080
 Environment=QDRANT_URL=http://host.containers.internal:6333
 Environment=QDRANT_COLLECTION=documents
-# fastembed uses ONNX Runtime (CPU-only, no PyTorch) — no GPU segfault risk
-Environment=EMBED_MODEL=BAAI/bge-base-en-v1.5
 Environment=RAG_TOP_K=40
 Environment=RAG_PROXY_PORT=8090
 
@@ -39,22 +34,14 @@ Environment=RERANKER_ENABLED=true
 Environment=RERANKER_MODEL=Xenova/ms-marco-MiniLM-L-6-v2
 Environment=RERANKER_TOP_N=15
 
-# Thinking budget — modest token budget for reasoning across sources
-# without unconstrained latency
-Environment=THINKING_BUDGET=1024
-
-# HuggingFace cache location (inside the writable volume)
-Environment=HF_HOME=/opt/app-root/src/.cache/huggingface
-Environment=TRANSFORMERS_CACHE=/opt/app-root/src/.cache/huggingface
-Environment=PYTHONPATH=/app
+# Model cache location (inside the writable volume)
+Environment=RAGPIPE_MODEL_CACHE=/home/default/.cache/ragpipe
 
 Network=host
 
-Exec=python3 /app/ragpipe.py
-
 ContainerName=ragpipe
 
-# Health check — proxy should respond to any request
+# Health check
 HealthCmd=python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health')"
 HealthInterval=30s
 HealthTimeout=10s
