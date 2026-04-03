@@ -44,6 +44,12 @@ EMBED_MODEL = os.environ.get("EMBED_MODEL", "BAAI/bge-base-en-v1.5")
 TOP_K = int(os.environ.get("RAG_TOP_K", "20"))
 PROXY_PORT = int(os.environ.get("RAG_PROXY_PORT", "8090"))
 
+# ONNX Runtime thread count — limits per-session thread arenas.
+# Default 0 = all logical cores (32 on Ryzen AI Max+), which creates
+# ~5 GB of per-thread arena overhead across the two ONNX models.
+# 4 threads is sufficient for a proxy with a 4-worker thread pool.
+ONNX_THREADS = int(os.environ.get("ONNX_THREADS", "4"))
+
 # Thinking budget — allows the model to reason across retrieved chunks
 # and general knowledge without unconstrained latency
 THINKING_BUDGET = int(os.environ.get("THINKING_BUDGET", "1024"))
@@ -79,8 +85,8 @@ def startup():
         )
 
     # fastembed uses ONNX Runtime (CPU-only) — no PyTorch, no GPU segfault risk
-    log.info("Loading embedding model: %s (fastembed/ONNX)", EMBED_MODEL)
-    embedder = TextEmbedding(EMBED_MODEL)
+    log.info("Loading embedding model: %s (fastembed/ONNX, threads=%d)", EMBED_MODEL, ONNX_THREADS)
+    embedder = TextEmbedding(EMBED_MODEL, threads=ONNX_THREADS)
 
     from docstore import create_docstore
 

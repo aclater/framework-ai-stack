@@ -18,6 +18,7 @@ log = logging.getLogger("rag-proxy.reranker")
 RERANKER_ENABLED = os.environ.get("RERANKER_ENABLED", "true").lower() in ("true", "1", "yes")
 RERANKER_MODEL = os.environ.get("RERANKER_MODEL", "Xenova/ms-marco-MiniLM-L-6-v2")
 RERANKER_TOP_N = int(os.environ.get("RERANKER_TOP_N", "5"))
+ONNX_THREADS = int(os.environ.get("ONNX_THREADS", "4"))
 
 _model = None
 
@@ -30,8 +31,8 @@ def _get_model():
 
     from fastembed.rerank.cross_encoder import TextCrossEncoder
 
-    log.info("Loading reranker model %s (fastembed/ONNX)", RERANKER_MODEL)
-    _model = TextCrossEncoder(model_name=RERANKER_MODEL)
+    log.info("Loading reranker model %s (fastembed/ONNX, threads=%d)", RERANKER_MODEL, ONNX_THREADS)
+    _model = TextCrossEncoder(model_name=RERANKER_MODEL, threads=ONNX_THREADS)
     log.info("Reranker model loaded")
     return _model
 
