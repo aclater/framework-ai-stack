@@ -4,6 +4,7 @@ citations, and injects grounded context into chat completions."""
 
 import asyncio
 import functools
+import json
 import logging
 import os
 import sys
@@ -247,7 +248,7 @@ async def process_chat_request(body: dict) -> tuple[dict, dict]:
     retrieved_set = {(c["doc_id"], c["chunk_id"]) for c in all_candidates}
 
     # Format context with citation-friendly labels
-    context = format_context(ranked)
+    context = format_context(ranked, docstore=docstore)
     system_content = build_system_message(context)
 
     if corpus_coverage == "none":
@@ -270,12 +271,12 @@ async def process_chat_request(body: dict) -> tuple[dict, dict]:
 
     body["messages"] = new_messages
 
-    # Thinking budget — llama-server uses the --thinking flag at startup,
-    # not per-request chat_template_kwargs. The THINKING_BUDGET is passed
-    # as max_completion_tokens to bound thinking + response together.
-    # This prevents unconstrained thinking from consuming the full context.
+    # Disable thinking — reasoning_content is not handled by Open WebUI
+    # streaming and wastes tokens. The RAG context provides the grounding
+    # the model needs without chain-of-thought.
+    body.setdefault("chat_template_kwargs", {})["enable_thinking"] = False
     if "max_tokens" not in body and "max_completion_tokens" not in body:
-        body["max_completion_tokens"] = THINKING_BUDGET + 2048
+        body["max_completion_tokens"] = 4096
 
     return body, {
         "ranked": ranked,
@@ -353,6 +354,27 @@ def process_response(response_data: dict, ctx: dict) -> dict:
     return response_data
 
 
+def _format_perf_summary(timings: dict | None, usage: dict | None, ctx: dict) -> str:
+    """Format a performance summary block appended to streaming responses."""
+    parts = ["\n\n---\n📊 **Performance**\n"]
+    if usage:
+        parts.append(f"- Prompt: {usage.get('prompt_tokens', '?')} tokens")
+        parts.append(f"- Completion: {usage.get('completion_tokens', '?')} tokens")
+        parts.append(f"- Total: {usage.get('total_tokens', '?')} tokens")
+    if timings:
+        prompt_ms = timings.get("prompt_ms", 0)
+        predicted_ms = timings.get("predicted_ms", 0)
+        predicted_tps = timings.get("predicted_per_second", 0)
+        prompt_tps = timings.get("prompt_per_second", 0)
+        parts.append(f"- Prompt: {prompt_ms / 1000:.1f}s ({prompt_tps:.0f} t/s)")
+        parts.append(f"- Generation: {predicted_ms / 1000:.1f}s ({predicted_tps:.0f} t/s)")
+    ranked = ctx.get("ranked", [])
+    if ranked:
+        sources = sorted({r.get("source", "?") for r in ranked})
+        parts.append(f"- RAG: {len(ranked)} chunks from {len(sources)} source(s)")
+    return "\n".join(parts) + "\n"
+
+
 # ── HTTP endpoints ───────────────────────────────────────────────────────────
 
 
@@ -368,12 +390,12 @@ async def chat_completions(request: Request):
     stream = body.get("stream", False)
 
     if stream:
-        # Streaming responses can't be post-processed for citations
-        # because we don't have the full text. Pass through as-is.
-        # The client must be created inside the generator so it stays
-        # alive for the duration of the stream — creating it in an
-        # outer async-with closes it before the stream is consumed.
+        # Stream chunks through, capture the final chunk's timings/usage,
+        # and append a performance summary before [DONE].
         async def stream_response():
+            timings = None
+            usage = None
+            last_chunk_id = None
             async with (
                 httpx.AsyncClient(timeout=300) as client,
                 client.stream(
@@ -383,8 +405,33 @@ async def chat_completions(request: Request):
                     headers={"Content-Type": "application/json"},
                 ) as resp,
             ):
-                async for chunk in resp.aiter_bytes():
-                    yield chunk
+                async for raw in resp.aiter_lines():
+                    if not raw.startswith("data: "):
+                        yield raw + "\n"
+                        continue
+                    payload = raw[6:]
+                    if payload.strip() == "[DONE]":
+                        # Inject performance summary before [DONE]
+                        if timings or usage:
+                            summary = _format_perf_summary(timings, usage, retrieval_ctx)
+                            summary_chunk = {
+                                "choices": [{"finish_reason": None, "index": 0, "delta": {"content": summary}}],
+                                "id": last_chunk_id or "",
+                                "object": "chat.completion.chunk",
+                            }
+                            yield f"data: {json.dumps(summary_chunk)}\n\n"
+                        yield "data: [DONE]\n\n"
+                        continue
+                    try:
+                        chunk_data = json.loads(payload)
+                        if "timings" in chunk_data:
+                            timings = chunk_data["timings"]
+                        if "usage" in chunk_data:
+                            usage = chunk_data["usage"]
+                        last_chunk_id = chunk_data.get("id", last_chunk_id)
+                    except json.JSONDecodeError:
+                        pass
+                    yield raw + "\n\n"
 
         return StreamingResponse(stream_response(), media_type="text/event-stream")
     else:

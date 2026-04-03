@@ -26,12 +26,11 @@ audit_log = logging.getLogger("rag-proxy.audit")
 
 SYSTEM_PROMPT = """You are a knowledgeable assistant with access to a curated document corpus. Use the following rules when answering:
 
-1. If the retrieved documents contain relevant information, use them as your primary source. Cite every claim drawn from the documents using [doc_id:chunk_id].
+1. If the retrieved documents contain relevant information, use them as your primary source. Cite every claim drawn from the documents using [doc_id:chunk_id]. Answer directly from the document content — do not second-guess what the document is. If the text says it is a particular law, act, or report, treat it as that document.
 
-2. If the retrieved documents are silent or insufficient, you may draw on your general knowledge to answer. When doing so, you must prefix your response with:
-"⚠️ Not in corpus:" to indicate the answer is not sourced from the provided documents.
+2. Only use the "⚠️ Not in corpus:" prefix when NONE of the retrieved documents are relevant to the question. If you cite even one document, do NOT start with or include "⚠️ Not in corpus:" — the answer IS from the corpus. Partial coverage is still corpus coverage.
 
-3. If the retrieved documents partially answer the question, answer the covered portion from documents with citations, then address the remainder from general knowledge prefixed with "⚠️ Not in corpus:" for that portion only.
+3. If the retrieved documents partially answer the question, answer the covered portion from documents with citations first. You may then add supplementary context from general knowledge, clearly separated and prefixed with "⚠️ Not in corpus:" for that portion only.
 
 4. Never present general knowledge as if it came from the retrieved documents. Never fabricate citations.
 
@@ -46,23 +45,45 @@ SYSTEM_PROMPT_HASH = hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()
 RERANKER_MIN_SCORE = float(os.environ.get("RERANKER_MIN_SCORE", "-999"))
 
 
-def format_context(ranked_chunks: list[dict]) -> str:
+def format_context(ranked_chunks: list[dict], docstore=None) -> str:
     """Format reranked chunks as context with doc_id:chunk_id references.
 
     Each chunk is labeled with its doc_id:chunk_id so the model can cite
     it using the [doc_id:chunk_id] format specified in the system prompt.
+
+    When a docstore is provided, chunk 0 of each referenced document is
+    fetched and prepended as a document header so the model can identify
+    what the document is (e.g. its title or short title).
     """
     if not ranked_chunks:
         return ""
 
+    # Collect unique doc_ids and fetch their header chunks (chunk 0)
+    doc_headers: dict[str, str] = {}
+    if docstore:
+        seen_doc_ids = {r["doc_id"] for r in ranked_chunks if r.get("doc_id")}
+        # Only fetch headers for docs where chunk 0 isn't already in the results
+        result_keys = {(r.get("doc_id"), r.get("chunk_id")) for r in ranked_chunks}
+        need_headers = [(did, 0) for did in seen_doc_ids if (did, 0) not in result_keys]
+        if need_headers:
+            headers = docstore.get_chunks(need_headers)
+            for (did, _), text in headers.items():
+                # Truncate header to first 500 chars — just need the title
+                doc_headers[did] = text[:500]
+
     parts = []
+    header_emitted: set[str] = set()
     for r in ranked_chunks:
         doc_id = r.get("doc_id", "unknown")
         chunk_id = r.get("chunk_id", 0)
         source = r.get("source", "unknown")
         text = r.get("text", "")
-        # Label each chunk with its citation reference so the model
-        # knows which identifier to use when citing this content
+
+        # Emit document header once before the first chunk from each document
+        if doc_id not in header_emitted and doc_id in doc_headers:
+            parts.append(f"[{doc_id}:0] (Source: {source}) — DOCUMENT HEADER:\n{doc_headers[doc_id]}")
+            header_emitted.add(doc_id)
+
         parts.append(f"[{doc_id}:{chunk_id}] (Source: {source})\n{text}")
 
     return "\n\n".join(parts)
