@@ -35,9 +35,7 @@ log = logging.getLogger("ingest-remote")
 
 HARRISON = os.environ.get("HARRISON_HOST", "192.168.1.122")
 QDRANT_URL = os.environ.get("QDRANT_URL", f"http://{HARRISON}:6333")
-DOCSTORE_URL = os.environ.get(
-    "DOCSTORE_URL", f"postgresql://litellm:litellm@{HARRISON}:5432/litellm"
-)
+DOCSTORE_URL = os.environ.get("DOCSTORE_URL", f"postgresql://litellm:litellm@{HARRISON}:5432/litellm")
 QDRANT_COLLECTION = os.environ.get("QDRANT_COLLECTION", "documents")
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "BAAI/bge-base-en-v1.5")
 EMBED_THREADS = int(os.environ.get("EMBED_THREADS", os.cpu_count() or 4))
@@ -46,9 +44,7 @@ CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "128"))
 
 # Google Drive
 GDRIVE_FOLDER_ID = os.environ.get("GDRIVE_FOLDER_ID", "")
-GDRIVE_SA_KEY = os.environ.get(
-    "GOOGLE_APPLICATION_CREDENTIALS", str(Path.home() / ".config/ramalama/gdrive-sa.json")
-)
+GDRIVE_SA_KEY = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", str(Path.home() / ".config/ramalama/gdrive-sa.json"))
 
 # Git repos: JSON list of {"url": "...", "glob": "**/*.md"}
 REPO_SOURCES = os.environ.get("REPO_SOURCES", "")
@@ -202,9 +198,7 @@ def load_drive_docs(staging_dir: Path) -> list[dict]:
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaIoBaseDownload
 
-    creds = service_account.Credentials.from_service_account_file(
-        str(sa_path), scopes=GDRIVE_SCOPES
-    )
+    creds = service_account.Credentials.from_service_account_file(str(sa_path), scopes=GDRIVE_SCOPES)
     service = build("drive", "v3", credentials=creds)
 
     # List all files in folder
@@ -294,19 +288,24 @@ def load_git_docs(repos_dir: Path) -> list[dict]:
                 log.info("Git: pulling %s", repo_name)
                 result = subprocess.run(
                     ["git", "-C", str(repo_path), "pull", "--ff-only"],
-                    capture_output=True, timeout=60,
+                    capture_output=True,
+                    timeout=60,
                 )
                 if result.returncode != 0:
                     shutil.rmtree(repo_path)
                     subprocess.run(
                         ["git", "clone", "--depth", "1", url, str(repo_path)],
-                        check=True, capture_output=True, timeout=120,
+                        check=True,
+                        capture_output=True,
+                        timeout=120,
                     )
             else:
                 log.info("Git: cloning %s (shallow)", repo_name)
                 subprocess.run(
                     ["git", "clone", "--depth", "1", url, str(repo_path)],
-                    check=True, capture_output=True, timeout=120,
+                    check=True,
+                    capture_output=True,
+                    timeout=120,
                 )
         except Exception:
             log.warning("Git: failed to clone/pull %s, skipping", url)
@@ -409,7 +408,9 @@ def embed_texts_local(texts: list[str], batch_size: int = 256) -> list[list[floa
     elapsed = time.monotonic() - t0
     log.info(
         "Embedded %d texts in %.1fs (%.0f texts/sec)",
-        len(texts), elapsed, len(texts) / elapsed if elapsed > 0 else 0,
+        len(texts),
+        elapsed,
+        len(texts) / elapsed if elapsed > 0 else 0,
     )
     return vectors.tolist()
 
@@ -445,12 +446,14 @@ def ingest(docs: list[dict]) -> None:
         doc_id = str(uuid.uuid5(uuid.NAMESPACE_URL, doc["source"]))
         chunks = chunk_text(doc["text"])
         for i, chunk in enumerate(chunks):
-            all_chunks.append({
-                "doc_id": doc_id,
-                "chunk_id": i,
-                "text": chunk,
-                "source": doc["source"],
-            })
+            all_chunks.append(
+                {
+                    "doc_id": doc_id,
+                    "chunk_id": i,
+                    "text": chunk,
+                    "source": doc["source"],
+                }
+            )
         log.info("Chunked %s -> %d chunks (doc_id=%s)", doc["source"], len(chunks), doc_id)
 
     if not all_chunks:

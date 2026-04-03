@@ -46,17 +46,36 @@ else
     HOST_QUADLET_SRC=""
 fi
 
-# Model selection based on VRAM — 9B fits in ≤16 GB, 35B-A3B needs ≥32 GB
-if [[ "$GPU_VRAM_MB" -ge 32000 ]]; then
-    MODEL_REPO="unsloth/Qwen3.5-35B-A3B-GGUF"
-    MODEL_FILE="Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"
-    MODEL_SIZE_HINT="~22 GB"
-    MODEL_DESC="Qwen3.5-35B-A3B"
+# ── Tuning config ────────────────────────────────────────────────────────────
+# Load tune.conf if it exists (written by cmd_tune), otherwise use safe defaults.
+# Run ./llm-stack.sh tune to generate optimal settings for this hardware.
+TUNE_CONF="$HOME/.config/llm-stack/tune.conf"
+if [[ -f "$TUNE_CONF" ]]; then
+    # shellcheck source=/dev/null
+    source "$TUNE_CONF"
 else
-    MODEL_REPO="unsloth/Qwen3.5-9B-GGUF"
-    MODEL_FILE="Qwen3.5-9B-UD-Q4_K_XL.gguf"
-    MODEL_SIZE_HINT="~6 GB"
-    MODEL_DESC="Qwen3.5-9B"
+    # Safe defaults until tune is run — Q4 smallest model that fits
+    if [[ "$GPU_VRAM_MB" -ge 32000 ]]; then
+        MODEL_REPO="unsloth/Qwen3.5-35B-A3B-GGUF"
+        MODEL_FILE="Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"
+        MODEL_SIZE_HINT="~22 GB"
+        MODEL_DESC="Qwen3.5-35B-A3B Q4"
+    else
+        MODEL_REPO="unsloth/Qwen3.5-9B-GGUF"
+        MODEL_FILE="Qwen3.5-9B-UD-Q4_K_XL.gguf"
+        MODEL_SIZE_HINT="~6 GB"
+        MODEL_DESC="Qwen3.5-9B Q4"
+    fi
+    TUNE_CTX_SIZE=32768
+    TUNE_PARALLEL=2
+    TUNE_THREADS=$(nproc)
+    TUNE_BATCH_SIZE=2048
+    TUNE_UBATCH_SIZE=512
+    TUNE_CACHE_TYPE_K=q4_0
+    TUNE_CACHE_TYPE_V=q4_0
+    TUNE_FLASH_ATTN=on
+    TUNE_MLOCK=""
+    TUNE_EXTRA_ARGS=""
 fi
 
 # Registry candidates for the inference image, in preference order
@@ -95,9 +114,10 @@ ${BOLD}First-time setup (run in order):${RESET}
   groups        add user to render/video groups       [needs sudo + reboot]
   setup         verify GPU, write configs
   pull-image    pull the RamaLama ROCm container image
-  pull-models   download model (~22 GB)
+  tune          auto-detect hardware and compute optimal parameters
+  pull-models   download model (size depends on tune)
   build         build ragpipe and rag-watcher container images
-  install       install quadlets to systemd
+  install       install quadlets to systemd (applies tune.conf)
   up            start all services
 
 ${BOLD}Operations:${RESET}
@@ -113,6 +133,10 @@ ${BOLD}Logs:${RESET}
 ${BOLD}Models:${RESET}
   pull-image              pull ROCm container image (with registry fallback)
   swap <hf://…>           hot-swap the model
+
+${BOLD}Tuning:${RESET}
+  tune          auto-detect hardware, select model + quant + params
+  retune        re-tune and restart ramalama (no model download)
 
 ${BOLD}Teardown:${RESET}
   uninstall     remove quadlets (models kept)
@@ -278,6 +302,10 @@ cmd_setup() {
         fi
     fi
 
+    # Auto-tune on first setup
+    echo ""
+    cmd_tune
+
     echo ""
     ok "Setup complete — next: ./llm-stack.sh pull-image"
 }
@@ -336,6 +364,210 @@ cmd_pull_image() {
         ok "Updated installed: $(basename "$f")"
     done
     systemctl --user daemon-reload
+}
+
+# ── Auto-tuning ──────────────────────────────────────────────────────────────
+# Detects hardware and computes optimal llama-server parameters.
+# Writes ~/.config/llm-stack/tune.conf which is sourced at startup
+# and consumed by install to template the quadlet Exec line.
+
+# Known model sizes in MB for VRAM budget calculations
+declare -A QWEN35_35B_SIZES=(
+    [Q4_K_XL]=21200  [Q6_K_XL]=32870  [Q8_K_XL]=49900
+)
+declare -A QWEN35_9B_SIZES=(
+    [Q4_K_XL]=5730   [Q6_K_XL]=8980   [Q8_0]=9750
+)
+# KV cache size per 1K context tokens (MB) at each quantization level
+# These are approximate — actual size depends on model architecture
+declare -A KV_PER_1K_CTX=(
+    [q4_0_35b]=5.5   [q8_0_35b]=11.0
+    [q4_0_9b]=8.8    [q8_0_9b]=17.6
+)
+
+cmd_tune() {
+    header "Auto-tuning for $(hostname -s)"
+
+    local sys_ram_mb
+    sys_ram_mb=$(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo)
+    local cpu_cores
+    cpu_cores=$(nproc)
+
+    log "Hardware detected:"
+    log "  GPU:      $GPU_VENDOR ($GPU_NAME)"
+    log "  VRAM:     $(( GPU_VRAM_MB )) MB"
+    log "  RAM:      $(( sys_ram_mb )) MB"
+    log "  CPU:      $cpu_cores cores"
+    echo ""
+
+    # ── Model family selection (based on VRAM) ──────────────────────────
+    local model_family
+    if [[ "$GPU_VRAM_MB" -ge 32000 ]]; then
+        model_family="35b"
+    else
+        model_family="9b"
+    fi
+
+    # ── Quantization selection ──────────────────────────────────────────
+    # Pick the highest quality quantization that fits in VRAM with room
+    # for KV cache (~15% of remaining VRAM) and runtime overhead (~500 MB)
+    local quant model_mb kv_budget_mb
+    local overhead_mb=500
+    local vram_available=$(( GPU_VRAM_MB - overhead_mb ))
+
+    if [[ "$model_family" == "35b" ]]; then
+        if [[ $(( vram_available )) -ge ${QWEN35_35B_SIZES[Q8_K_XL]} ]]; then
+            quant="Q8_K_XL"; model_mb=${QWEN35_35B_SIZES[Q8_K_XL]}
+        elif [[ $(( vram_available )) -ge ${QWEN35_35B_SIZES[Q6_K_XL]} ]]; then
+            quant="Q6_K_XL"; model_mb=${QWEN35_35B_SIZES[Q6_K_XL]}
+        else
+            quant="Q4_K_XL"; model_mb=${QWEN35_35B_SIZES[Q4_K_XL]}
+        fi
+    else
+        if [[ $(( vram_available )) -ge ${QWEN35_9B_SIZES[Q8_0]} ]]; then
+            quant="Q8_0"; model_mb=${QWEN35_9B_SIZES[Q8_0]}
+        elif [[ $(( vram_available )) -ge ${QWEN35_9B_SIZES[Q6_K_XL]} ]]; then
+            quant="Q6_K_XL"; model_mb=${QWEN35_9B_SIZES[Q6_K_XL]}
+        else
+            quant="Q4_K_XL"; model_mb=${QWEN35_9B_SIZES[Q4_K_XL]}
+        fi
+    fi
+
+    local vram_after_model=$(( vram_available - model_mb ))
+    ok "Model: Qwen3.5-${model_family^^}-A3B $quant (${model_mb} MB) — ${vram_after_model} MB VRAM remaining"
+
+    # ── KV cache type ───────────────────────────────────────────────────
+    # Use q8_0 if we have >2 GB VRAM headroom after model, otherwise q4_0
+    local cache_type
+    if [[ "$vram_after_model" -ge 2048 ]]; then
+        cache_type="q8_0"
+    else
+        cache_type="q4_0"
+    fi
+    ok "KV cache: $cache_type"
+
+    # ── Context size and parallel slots ─────────────────────────────────
+    # Budget: remaining VRAM after model, minus 500 MB safety margin
+    # Each slot gets ctx_size/parallel tokens of KV cache
+    local kv_key="${cache_type}_${model_family}"
+    local kv_per_1k=${KV_PER_1K_CTX[$kv_key]:-8}
+    local kv_budget_mb=$(( vram_after_model - 500 ))
+    [[ "$kv_budget_mb" -lt 256 ]] && kv_budget_mb=256
+
+    # Start with 2 parallel slots, compute max context
+    local parallel=2
+    local max_ctx_1k=$(( kv_budget_mb * 10 / (${kv_per_1k%.*} * 10) ))
+    # Round down to nearest 8K and cap at 65536
+    local ctx_size=$(( max_ctx_1k * 1024 ))
+    ctx_size=$(( (ctx_size / 8192) * 8192 ))
+    [[ "$ctx_size" -gt 65536 ]] && ctx_size=65536
+    [[ "$ctx_size" -lt 8192 ]] && ctx_size=8192
+
+    ok "Context: $ctx_size total ($((ctx_size / parallel))K per slot, $parallel parallel)"
+
+    # ── Batch sizes ─────────────────────────────────────────────────────
+    # Larger batches = faster prompt processing, costs more memory
+    local batch_size=2048
+    local ubatch_size=512
+    if [[ "$sys_ram_mb" -ge 32000 && "$GPU_VRAM_MB" -ge 16000 ]]; then
+        batch_size=4096
+        ubatch_size=1024
+    fi
+    ok "Batch: $batch_size / ubatch: $ubatch_size"
+
+    # ── Thread count ────────────────────────────────────────────────────
+    # Use physical cores, not hyperthreads — HT adds contention for
+    # memory-bound inference workloads
+    local threads=$(( cpu_cores / 2 ))
+    [[ "$threads" -lt 4 ]] && threads=4
+    [[ "$threads" -gt 32 ]] && threads=32
+    ok "Threads: $threads (of $cpu_cores logical)"
+
+    # ── mlock ───────────────────────────────────────────────────────────
+    # Lock model in RAM if system has >16 GB free after estimated usage
+    local estimated_sys_usage=8000  # OS + containers + desktop
+    local mlock_flag=""
+    if [[ $(( sys_ram_mb - estimated_sys_usage )) -gt 16000 ]]; then
+        mlock_flag="--mlock"
+        ok "mlock: enabled ($(( sys_ram_mb - estimated_sys_usage )) MB sys RAM headroom)"
+    else
+        ok "mlock: disabled (insufficient sys RAM headroom)"
+    fi
+
+    # ── Sampling parameters ─────────────────────────────────────────────
+    # Conservative defaults for RAG — prioritize accuracy over creativity
+    local sampling="--temp 0.7 --top-p 0.95 --top-k 30 --min-p 0.05 --presence-penalty 0.8 --repeat-penalty 1.0"
+    ok "Sampling: temp=0.7 top-p=0.95 top-k=30 min-p=0.05 presence=0.8"
+
+    # ── Model file names ────────────────────────────────────────────────
+    local model_repo model_file model_size_hint model_desc
+    if [[ "$model_family" == "35b" ]]; then
+        model_repo="unsloth/Qwen3.5-35B-A3B-GGUF"
+        model_file="Qwen3.5-35B-A3B-UD-${quant}.gguf"
+        model_size_hint="~$(( model_mb / 1024 )) GB"
+        model_desc="Qwen3.5-35B-A3B ${quant}"
+    else
+        model_repo="unsloth/Qwen3.5-9B-GGUF"
+        if [[ "$quant" == "Q8_0" ]]; then
+            model_file="Qwen3.5-9B-${quant}.gguf"
+        else
+            model_file="Qwen3.5-9B-UD-${quant}.gguf"
+        fi
+        model_size_hint="~$(( model_mb / 1024 )) GB"
+        model_desc="Qwen3.5-9B ${quant}"
+    fi
+
+    # ── Write tune.conf ─────────────────────────────────────────────────
+    mkdir -p "$CONFIG_DIR"
+    cat > "$TUNE_CONF" <<TUNEEOF
+# Auto-generated by llm-stack.sh tune on $(date -Iseconds)
+# Hardware: $GPU_VENDOR $GPU_NAME, ${GPU_VRAM_MB} MB VRAM, ${sys_ram_mb} MB RAM, ${cpu_cores} cores
+# Re-run: ./llm-stack.sh tune
+
+# Model
+MODEL_REPO="$model_repo"
+MODEL_FILE="$model_file"
+MODEL_SIZE_HINT="$model_size_hint"
+MODEL_DESC="$model_desc"
+
+# llama-server parameters
+TUNE_CTX_SIZE=$ctx_size
+TUNE_PARALLEL=$parallel
+TUNE_THREADS=$threads
+TUNE_BATCH_SIZE=$batch_size
+TUNE_UBATCH_SIZE=$ubatch_size
+TUNE_CACHE_TYPE_K=$cache_type
+TUNE_CACHE_TYPE_V=$cache_type
+TUNE_FLASH_ATTN=on
+TUNE_MLOCK="$mlock_flag"
+TUNE_SAMPLING="$sampling"
+TUNE_EXTRA_ARGS=""
+TUNEEOF
+
+    ok "Wrote $TUNE_CONF"
+    echo ""
+    log "To apply: ./llm-stack.sh pull-models && ./llm-stack.sh install"
+    log "To apply without model change: ./llm-stack.sh retune"
+}
+
+cmd_retune() {
+    cmd_tune
+    header "Applying tuned configuration"
+
+    # Re-source the freshly written config
+    # shellcheck source=/dev/null
+    source "$TUNE_CONF"
+
+    # Re-install quadlets with new params and restart ramalama
+    cmd_install
+    log "Restarting ramalama with new parameters..."
+    systemctl --user restart ramalama
+    sleep 5
+    if systemctl --user is-active ramalama &>/dev/null; then
+        ok "ramalama running with tuned config"
+    else
+        warn "ramalama failed to start — check: ./llm-stack.sh logs model"
+    fi
 }
 
 # ── Model pulling ─────────────────────────────────────────────────────────────
@@ -469,6 +701,26 @@ cmd_install() {
         resolved=$(_resolve_model_path "${MODEL_STORE_PATH[$unit]}" "${MODEL_FILENAME[$unit]}")
         local quadlet="$QUADLET_DIR/$unit.container"
         sed -i "s|src=MODEL_PATH_PLACEHOLDER|src=$resolved|" "$quadlet"
+
+        # Template the Exec line from tune.conf if available
+        if [[ -f "$TUNE_CONF" ]]; then
+            local exec_line="llama-server --model /mnt/models/model.file --host 0.0.0.0 --port 8080"
+            exec_line+=" --ctx-size ${TUNE_CTX_SIZE:-32768}"
+            exec_line+=" --n-gpu-layers 999"
+            exec_line+=" --threads ${TUNE_THREADS:-16}"
+            exec_line+=" --parallel ${TUNE_PARALLEL:-2}"
+            exec_line+=" --flash-attn ${TUNE_FLASH_ATTN:-on}"
+            exec_line+=" --cache-type-k ${TUNE_CACHE_TYPE_K:-q4_0}"
+            exec_line+=" --cache-type-v ${TUNE_CACHE_TYPE_V:-q4_0}"
+            exec_line+=" --batch-size ${TUNE_BATCH_SIZE:-2048}"
+            exec_line+=" --ubatch-size ${TUNE_UBATCH_SIZE:-512}"
+            [[ -n "${TUNE_MLOCK:-}" ]] && exec_line+=" $TUNE_MLOCK"
+            exec_line+=" --jinja"
+            [[ -n "${TUNE_EXTRA_ARGS:-}" ]] && exec_line+=" $TUNE_EXTRA_ARGS"
+            # Replace the entire Exec= line in the quadlet
+            sed -i "/^Exec=/c\\Exec=$exec_line" "$quadlet"
+            ok "Templated Exec line from tune.conf"
+        fi
     done
 
     systemctl --user daemon-reload
@@ -639,6 +891,8 @@ main() {
         groups)         cmd_groups ;;
         setup)          cmd_setup ;;
         pull-image)     cmd_pull_image ;;
+        tune)           cmd_tune ;;
+        retune)         cmd_retune ;;
         pull-models)    cmd_pull_models ;;
         build)          cmd_build ;;
         install)        cmd_install ;;
