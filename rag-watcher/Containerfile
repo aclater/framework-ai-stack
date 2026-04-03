@@ -14,5 +14,4 @@ RUN pip3.12 install --no-cache-dir -r /tmp/requirements.txt
 
 # App code is mounted as a volume at runtime for dev workflow
 WORKDIR /app
-USER 1001
 CMD ["python3.12", "/app/rag-watcher.py"]

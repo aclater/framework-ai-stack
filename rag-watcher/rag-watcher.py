@@ -34,9 +34,11 @@ STATE_PATH = Path(
     )
 )
 
-SUPPORTED_TEXT_EXTENSIONS = {".md", ".txt", ".html", ".adoc", ".rst"}
+SUPPORTED_TEXT_EXTENSIONS = {".md", ".txt", ".adoc", ".rst"}
+# HTML is text but needs tag stripping — handled separately in extract_text()
+SUPPORTED_HTML_EXTENSIONS = {".html", ".htm"}
 SUPPORTED_BINARY_EXTENSIONS = {".pdf", ".docx", ".pptx", ".xlsx"}
-ALL_EXTENSIONS = SUPPORTED_TEXT_EXTENSIONS | SUPPORTED_BINARY_EXTENSIONS
+ALL_EXTENSIONS = SUPPORTED_TEXT_EXTENSIONS | SUPPORTED_HTML_EXTENSIONS | SUPPORTED_BINARY_EXTENSIONS
 
 
 def load_state() -> dict:
@@ -59,6 +61,37 @@ def extract_text(file_path: Path) -> str:
 
     if ext in SUPPORTED_TEXT_EXTENSIONS:
         return file_path.read_text(errors="replace")
+
+    if ext in SUPPORTED_HTML_EXTENSIONS:
+        from html.parser import HTMLParser
+
+        class _HTMLTextExtractor(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.parts: list[str] = []
+                self._skip = False
+
+            def handle_starttag(self, tag, attrs):
+                self._skip = tag in ("script", "style", "nav", "header", "footer")
+
+            def handle_endtag(self, tag):
+                if tag in ("script", "style", "nav", "header", "footer"):
+                    self._skip = False
+
+            def handle_data(self, data):
+                if not self._skip:
+                    t = data.strip()
+                    if t:
+                        self.parts.append(t)
+
+        try:
+            raw = file_path.read_text(errors="replace")
+            parser = _HTMLTextExtractor()
+            parser.feed(raw)
+            return "\n".join(parser.parts)
+        except Exception:
+            log.warning("Failed to extract text from HTML: %s", file_path.name)
+            return ""
 
     if ext == ".pdf":
         try:
