@@ -8,11 +8,13 @@ After=local-fs.target
 [Container]
 Image=quay.io/sclorg/postgresql-16-c9s:latest
 
-Volume=litellm-db-data.volume:/var/lib/postgresql/data:Z
+# sclorg postgres data directory (not /var/lib/postgresql/data)
+Volume=litellm-db-data.volume:/var/lib/pgsql/data:Z
 
-Environment=POSTGRES_USER=litellm
-Environment=POSTGRES_PASSWORD=litellm
-Environment=POSTGRES_DB=litellm
+# sclorg images use POSTGRESQL_* env vars (not POSTGRES_*)
+Environment=POSTGRESQL_USER=litellm
+Environment=POSTGRESQL_PASSWORD=litellm
+Environment=POSTGRESQL_DATABASE=litellm
 
 Network=host
 
