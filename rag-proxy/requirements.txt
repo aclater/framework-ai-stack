@@ -1,7 +1,0 @@
-fastapi
-uvicorn
-httpx
-qdrant-client
-fastembed
-numpy
-psycopg2-binary

@@ -63,7 +63,7 @@ The core intelligence layer. Intercepts chat completion requests, performs retri
 
 See [grounding.md](grounding.md) for the full grounding specification.
 
-**Image:** `localhost/rag-proxy` (built from `ubi9/python-311`, deps + models baked in)
+**Image:** `localhost/ragpipe` (built from `ubi9/python-311`, deps + models baked in)
 
 ### Qdrant (:6333)
 
@@ -138,7 +138,7 @@ Chat interface. Connects to LiteLLM as its OpenAI backend, so all queries automa
 
 | Container | Base image | SELinux | Reason |
 |-----------|-----------|---------|--------|
-| rag-proxy | `localhost/rag-proxy` (from ubi9/python-311) | Enforcing | Pre-built with deps + models |
+| ragpipe | `localhost/ragpipe` (from ubi9/python-311) | Enforcing | Pre-built with deps + models |
 | rag-watcher | `localhost/rag-watcher` (from ubi10) | Enforcing | Pre-built with deps + models |
 | postgres | `sclorg/postgresql-16-c9s` | Enforcing | Red Hat ecosystem |
 | qdrant | `qdrant/qdrant` | Disabled | Debian binary triggers SELinux execmem denial on Fedora 43 |

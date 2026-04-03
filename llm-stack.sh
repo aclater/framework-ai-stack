@@ -9,7 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QUADLET_DIR="$HOME/.config/containers/systemd"
 CONFIG_DIR="$HOME/.config/llm-stack"
-UNITS=(postgres qdrant ramalama rag-proxy litellm rag-watcher open-webui)
+UNITS=(postgres qdrant ramalama ragpipe litellm rag-watcher open-webui)
 
 # Registry candidates for the ROCm image, in preference order
 ROCM_IMAGES=(
@@ -44,7 +44,7 @@ ${BOLD}First-time setup (run in order):${RESET}
   setup         verify GPU, write configs
   pull-image    pull the RamaLama ROCm container image
   pull-models   download model (~22 GB)
-  build         build rag-proxy and rag-watcher container images
+  build         build ragpipe and rag-watcher container images
   install       install quadlets to systemd
   up            start all services
 
@@ -56,7 +56,7 @@ ${BOLD}Operations:${RESET}
   test          smoke-test inference
 
 ${BOLD}Logs:${RESET}
-  logs <service>    follow logs (model|proxy|rag-proxy|rag|qdrant|webui|postgres)
+  logs <service>    follow logs (model|proxy|ragpipe|rag|qdrant|webui|postgres)
 
 ${BOLD}Models:${RESET}
   pull-image              pull ROCm container image (with registry fallback)
@@ -283,10 +283,10 @@ cmd_pull_models() {
 cmd_build() {
     header "Building container images"
 
-    log "Building rag-proxy image..."
-    podman build -t localhost/rag-proxy:latest "$SCRIPT_DIR/rag-proxy/" \
-        && ok "localhost/rag-proxy:latest" \
-        || fail "rag-proxy build failed"
+    log "Building ragpipe image..."
+    podman build -t localhost/ragpipe:latest "$HOME/git/ragpipe/" \
+        && ok "localhost/ragpipe:latest" \
+        || fail "ragpipe build failed"
 
     log "Building rag-watcher image..."
     podman build -t localhost/rag-watcher:latest "$SCRIPT_DIR/rag-watcher/" \
@@ -468,12 +468,12 @@ cmd_logs() {
     case "$target" in
         model)       journalctl --user -u ramalama -f ;;
         proxy)       journalctl --user -u litellm -f ;;
-        rag-proxy)   journalctl --user -u rag-proxy -f ;;
+        ragpipe)     journalctl --user -u ragpipe -f ;;
         rag|watcher) journalctl --user -u rag-watcher -f ;;
         qdrant)      journalctl --user -u qdrant -f ;;
         webui)       journalctl --user -u open-webui -f ;;
         postgres|db) journalctl --user -u postgres -f ;;
-        *)           fail "Usage: ./llm-stack.sh logs <model|proxy|rag-proxy|rag|qdrant|webui|postgres>" ;;
+        *)           fail "Usage: ./llm-stack.sh logs <model|proxy|ragpipe|rag|qdrant|webui|postgres>" ;;
     esac
 }
 

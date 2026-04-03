@@ -15,7 +15,7 @@ All services run as rootless Podman containers under systemd user units.
 
 # Individual services
 systemctl --user start ramalama
-systemctl --user stop rag-proxy
+systemctl --user stop ragpipe
 systemctl --user restart qdrant
 systemctl --user restart rag-watcher
 ```
@@ -29,12 +29,12 @@ systemctl --user restart rag-watcher
 ./llm-stack.sh logs webui   # Open WebUI
 
 # RAG pipeline
-journalctl --user -u rag-proxy -f
+journalctl --user -u ragpipe -f
 journalctl --user -u rag-watcher -f
 journalctl --user -u qdrant -f
 
 # Audit log (grounding decisions, no text content)
-journalctl --user -u rag-proxy -f | grep '"grounding"'
+journalctl --user -u ragpipe -f | grep '"grounding"'
 ```
 
 ### Service dependencies
@@ -42,13 +42,13 @@ journalctl --user -u rag-proxy -f | grep '"grounding"'
 ```
 postgres
   ├── litellm (state store)
-  ├── rag-proxy (document store)
+  ├── ragpipe (document store)
   └── rag-watcher (document store)
 qdrant
-  ├── rag-proxy (vector search)
+  ├── ragpipe (vector search)
   └── rag-watcher (vector upsert)
 ramalama
-  └── rag-proxy (model inference)
+  └── ragpipe (model inference)
 ```
 
 ## Adding document sources
@@ -120,7 +120,7 @@ curl -s http://127.0.0.1:8090/v1/models
 Count grounding modes over the last hour:
 
 ```bash
-journalctl --user -u rag-proxy --since "1 hour ago" --no-pager \
+journalctl --user -u ragpipe --since "1 hour ago" --no-pager \
   | grep '"grounding"' \
   | python3 -c "
 import sys, json, collections
@@ -171,7 +171,7 @@ If the model is still loading, wait — Qwen3.5-35B-A3B takes ~15 seconds to loa
 
 1. Check if Qdrant has data: `curl -s http://127.0.0.1:6333/collections/documents`
 2. Check if the docstore has chunks: `podman exec postgres psql -U litellm -c "SELECT COUNT(*) FROM chunks;"`
-3. Check proxy logs for errors: `journalctl --user -u rag-proxy --since "5 min ago"`
+3. Check proxy logs for errors: `journalctl --user -u ragpipe --since "5 min ago"`
 
 If Qdrant is empty, the watcher hasn't run yet. Force it: `systemctl --user restart rag-watcher`
 
@@ -184,7 +184,7 @@ The default reranker is `cross-encoder/ms-marco-MiniLM-L-6-v2` (22M params), whi
 
 The MiniLM model trades some multilingual quality for ~100x speed. To swap back to bge-reranker-v2-m3, set `RERANKER_MODEL=BAAI/bge-reranker-v2-m3` — but only if GPU reranking becomes stable on gfx1151 or you accept 60s+ reranking latency.
 
-The first request after a rag-proxy restart takes 5-10 seconds while the model downloads. Subsequent requests are sub-second.
+The first request after a ragpipe restart takes 5-10 seconds while the model downloads. Subsequent requests are sub-second.
 
 ### SELinux denials
 
@@ -202,7 +202,7 @@ Some containers bind to `0.0.0.0` (IPv4 only). If `curl http://localhost:...` fa
 
 ### Streaming responses not appearing in Open WebUI
 
-If queries show "thinking" but never produce visible output, check the rag-proxy logs for `RuntimeError: Cannot send a request, as the client has been closed`. This was a bug where the httpx AsyncClient was created in an `async with` block that closed before the streaming response was consumed. Fixed in commit `e8aa982` — ensure you're running the latest proxy code.
+If queries show "thinking" but never produce visible output, check the ragpipe logs for `RuntimeError: Cannot send a request, as the client has been closed`. This was a bug where the httpx AsyncClient was created in an `async with` block that closed before the streaming response was consumed. Fixed in commit `e8aa982` — ensure you're running the latest proxy code.
 
 ### High idle GPU usage
 
@@ -223,7 +223,7 @@ ruff check --fix && ruff format  # auto-fix everything
 ### Running tests
 
 ```bash
-cd rag-proxy && python -m pytest -v    # 54 tests — grounding, docstore, reranker
+# ragpipe tests: cd ~/git/ragpipe && python -m pytest -v
 cd rag-watcher && python -m pytest -v  # 11 tests — extraction, point IDs, state
 bash tests/run-tests.sh                # 86 tests — script, quadlets, configs, URLs
 ```
@@ -233,7 +233,7 @@ bash tests/run-tests.sh                # 86 tests — script, quadlets, configs,
 GitHub Actions run on every push to `main` and on pull requests:
 
 - **CI** (`.github/workflows/ci.yml`) — Ruff lint/format, ShellCheck, yamllint, pytest (both components), shell tests
-- **Containerfile lint** (`.github/workflows/container.yml`) — Hadolint on `rag-proxy/Containerfile` and `rag-watcher/Containerfile`, triggered only when Containerfiles change
+- **Containerfile lint** (`.github/workflows/container.yml`) — Hadolint on `rag-watcher/Containerfile` (ragpipe Containerfile linted in its own repo)
 - **Security scan** (`.github/workflows/security.yml`) — pip-audit against both `requirements.txt` files, runs on PRs and weekly (Monday 08:00 UTC)
 
 ## Configuration reference
@@ -267,4 +267,4 @@ All configuration is via environment variables in `~/.config/llm-stack/env` and 
 | `WATCH_INTERVAL_MINUTES` | `15` | Poll interval |
 | `CHUNK_SIZE` | `1024` | Max chunk size (characters) |
 | `CHUNK_OVERLAP` | `128` | Overlap between chunks |
-| `EMBED_URL` | `http://127.0.0.1:8090/v1/embeddings` | Embedding endpoint (delegates to rag-proxy) |
+| `EMBED_URL` | `http://127.0.0.1:8090/v1/embeddings` | Embedding endpoint (delegates to ragpipe) |

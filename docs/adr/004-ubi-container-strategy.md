@@ -20,7 +20,7 @@ Use UBI (Universal Base Image) containers wherever possible, with SELinux enforc
 
 | Container | Image | SELinux | Rationale |
 |-----------|-------|---------|-----------|
-| rag-proxy | `localhost/rag-proxy` (from ubi9/python-311) | Enforcing | Pre-built with deps + models baked in |
+| ragpipe | `localhost/ragpipe` (from ubi9/python-311) | Enforcing | Pre-built with deps + models baked in |
 | rag-watcher | `localhost/rag-watcher` (from ubi10) | Enforcing | Pre-built with deps + models baked in |
 | postgres | `sclorg/postgresql-16-c9s` | Enforcing | Red Hat-maintained Postgres |
 
@@ -37,19 +37,19 @@ Each exception has a comment in the quadlet file explaining the specific constra
 ## Consequences
 
 **Positive:**
-- SELinux enforcing on all custom containers (rag-proxy, rag-watcher, postgres)
+- SELinux enforcing on all custom containers (ragpipe, rag-watcher, postgres)
 - UBI images receive Red Hat security updates
 - Pinned digests ensure reproducible builds
 - Path to OpenShift: UBI images are pre-certified for RHEL/OKD
-- Non-root execution (UID 1001) on rag-proxy
+- Non-root execution (UID 1001) on ragpipe
 
 **Negative:**
 - UBI10 only has Python 3.12 (minimal variant); Python 3.11 required UBI9 for cross-encoder compatibility
 - UBI10 minimal has no package manager, so the rag-watcher uses the full UBI10 base
 - Upstream images (qdrant, litellm) can't be rebased without forking — SELinux exceptions will remain until these projects ship RHEL-compatible binaries or adopt UBI
 
-**Why not UBI10 for rag-proxy?**
+**Why not UBI10 for ragpipe?**
 UBI10 ships only `python-312-minimal`. The reranker cross-encoder (sentence-transformers `CrossEncoder`) has compatibility requirements with Python 3.11 that work better on UBI9. When UBI10 adds Python 3.11, the image can be rebased.
 
 **Digest pinning policy:**
-The rag-proxy image is pinned to a verified digest. Other images use `:latest` or version tags. Over time, all images should move to digest pinning for supply chain security.
+The ragpipe image is pinned to a verified digest. Other images use `:latest` or version tags. Over time, all images should move to digest pinning for supply chain security.

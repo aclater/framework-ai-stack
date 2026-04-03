@@ -44,7 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        component: [rag-proxy, rag-watcher]
+        # ragpipe tests are in github.com/aclater/ragpipe
+        component: [rag-watcher]
     defaults:
       run:
         working-directory: ${{ matrix.component }}

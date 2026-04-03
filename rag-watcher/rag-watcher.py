@@ -449,9 +449,9 @@ def get_qdrant_client():
 
 
 def embed_texts(texts: list[str], batch_size: int = 64) -> list[list[float]]:
-    """Embed texts via rag-proxy's /v1/embeddings endpoint.
+    """Embed texts via ragpipe's /v1/embeddings endpoint.
 
-    Delegates to rag-proxy instead of loading a local model — saves ~1-2 GB RAM.
+    Delegates to ragpipe instead of loading a local model — saves ~1-2 GB RAM.
     Batches requests to avoid oversized payloads.
     """
     import requests
@@ -554,9 +554,9 @@ def ingest_docs(docs: list[dict]) -> bool:
     docstore.upsert_chunks(all_chunks)
     log.info("Persisted %d chunks to docstore", len(all_chunks))
 
-    # Step 2: Embed chunk texts via rag-proxy (no local model needed)
+    # Step 2: Embed chunk texts via ragpipe (no local model needed)
     embed_batch_size = int(os.environ.get("EMBED_BATCH_SIZE", "64"))
-    log.info("Embedding %d chunks via rag-proxy (batch_size=%d)...", len(all_chunks), embed_batch_size)
+    log.info("Embedding %d chunks via ragpipe (batch_size=%d)...", len(all_chunks), embed_batch_size)
     texts = [c["text"] for c in all_chunks]
     vectors = embed_texts(texts, batch_size=embed_batch_size)
 

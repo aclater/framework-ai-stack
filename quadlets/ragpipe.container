@@ -1,23 +1,23 @@
-# ~/.config/containers/systemd/rag-proxy.container
-# RAG proxy — searches Qdrant, reranks with cross-encoder, injects context
-# Managed by: systemctl --user [start|stop|restart|status] rag-proxy
+# ~/.config/containers/systemd/ragpipe.container
+# ragpipe — searches Qdrant, reranks with cross-encoder, injects context
+# Source: https://github.com/aclater/ragpipe
+# Managed by: systemctl --user [start|stop|restart|status] ragpipe
 
 [Unit]
-Description=RAG proxy (Qdrant search + reranker + context injection)
+Description=ragpipe (Qdrant search + reranker + context injection)
 After=local-fs.target network-online.target qdrant.service postgres.service
 Wants=network-online.target
 Requires=qdrant.service postgres.service
 
 [Container]
-# Pre-built image with deps + models baked in (see rag-proxy/Containerfile)
-# Build: podman build -t localhost/rag-proxy rag-proxy/
-# Falls back to base UBI9 image if not built (pip install at runtime)
-Image=localhost/rag-proxy:latest
+# Pre-built image with deps + models baked in (see github.com/aclater/ragpipe)
+# Build: podman build -t localhost/ragpipe ~/git/ragpipe/
+Image=localhost/ragpipe:latest
 
-Volume=%h/git/framework-ai-stack/rag-proxy:/app:ro,z
+Volume=%h/git/ragpipe:/app:ro,z
 
 # Writable model cache for fastembed ONNX models
-Volume=rag-proxy-model-cache:/opt/app-root/src/.cache:Z
+Volume=ragpipe-model-cache:/opt/app-root/src/.cache:Z
 
 # Run as non-root user (default in UBI Python images, UID 1001)
 User=1001
@@ -50,9 +50,9 @@ Environment=PYTHONPATH=/app
 
 Network=host
 
-Exec=python3 /app/rag-proxy.py
+Exec=python3 /app/ragpipe.py
 
-ContainerName=rag-proxy
+ContainerName=ragpipe
 
 # Health check — proxy should respond to any request
 HealthCmd=python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health')"

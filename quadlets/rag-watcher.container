@@ -4,9 +4,9 @@
 
 [Unit]
 Description=Google Drive RAG watcher
-After=local-fs.target network-online.target qdrant.service rag-proxy.service
+After=local-fs.target network-online.target qdrant.service ragpipe.service
 Wants=network-online.target
-Requires=qdrant.service rag-proxy.service
+Requires=qdrant.service ragpipe.service
 
 [Container]
 # Pre-built image with deps + models baked in (see rag-watcher/Containerfile)
@@ -14,7 +14,7 @@ Requires=qdrant.service rag-proxy.service
 Image=localhost/rag-watcher:latest
 
 Volume=%h/git/framework-ai-stack/rag-watcher:/app:ro,z
-Volume=%h/git/framework-ai-stack/rag-proxy/docstore.py:/app/docstore.py:ro,z
+Volume=%h/git/ragpipe/docstore.py:/app/docstore.py:ro,z
 Volume=%h/.config/ramalama/gdrive-sa.json:/run/secrets/gdrive-sa.json:ro,z
 Volume=rag-staging:/staging:Z
 

@@ -1,10 +1,11 @@
-# Ruff — linter + formatter for rag-proxy and rag-watcher Python code
+# Ruff — linter + formatter for rag-watcher Python code
+# ragpipe has its own ruff config at github.com/aclater/ragpipe
 # https://docs.astral.sh/ruff/
 
 target-version = "py311"
 
 # Only lint project code, not vendored deps or venvs
-include = ["rag-proxy/*.py", "rag-watcher/*.py"]
+include = ["rag-watcher/*.py"]
 
 line-length = 120
 

@@ -125,7 +125,7 @@ The model runs with thinking enabled and a token budget:
 
 ## Audit log schema
 
-Every query produces a structured audit log entry (JSON, info level on the `rag-proxy.audit` logger):
+Every query produces a structured audit log entry (JSON, info level on the `ragpipe.audit` logger):
 
 ```json
 {

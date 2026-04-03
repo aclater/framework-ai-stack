@@ -48,7 +48,7 @@ rag-watcher (polls Drive, git, web → extract → chunk → embed)
 ./llm-stack.sh up/down/restart/status/test
 ./llm-stack.sh logs <model|proxy|webui>
 journalctl --user -u rag-watcher -f
-journalctl --user -u rag-proxy -f
+journalctl --user -u ragpipe -f
 journalctl --user -u qdrant -f
 ```
 
@@ -76,7 +76,7 @@ Configured via environment variables in `~/.config/llm-stack/env`:
 - `DOCSTORE_BACKEND` — postgres or sqlite (default: postgres)
 
 ## Container images
-- rag-proxy: localhost/rag-proxy (built from ubi9/python-311, deps + models baked in)
+- ragpipe: localhost/ragpipe (built from ubi9/python-311, deps + models baked in)
 - rag-watcher: localhost/rag-watcher (built from ubi10, deps + models baked in)
 - postgres: sclorg/postgresql-16-c9s (LiteLLM state + document store)
 - qdrant, litellm, ramalama, open-webui: upstream images
@@ -88,12 +88,12 @@ Configured via environment variables in `~/.config/llm-stack/env`:
 - [ADRs](docs/adr/) — architecture decision records
 
 ## CI / code quality
-- **Ruff** (`ruff.toml`) — Python linter + formatter for `rag-proxy/` and `rag-watcher/`
+- **Ruff** (`ruff.toml`) — Python linter + formatter for `rag-watcher/` (ragpipe has its own repo)
 - **ShellCheck** (`.shellcheckrc`) — shell linter for `llm-stack.sh`, `tests/run-tests.sh`, `rag-watcher/setup.sh`
 - **Hadolint** (`.hadolint.yaml`) — Containerfile linter
 - **yamllint** — YAML lint for `configs/`
 - **pip-audit** — dependency vulnerability scanning
-- **pytest** — unit tests in `rag-proxy/test_*.py` and `rag-watcher/test_*.py`
+- **pytest** — unit tests in `rag-watcher/test_*.py` (ragpipe tests in its own repo)
 - Run `ruff check && ruff format --check` before committing Python changes
 - Run `bash tests/run-tests.sh` before committing shell/quadlet/config changes
 

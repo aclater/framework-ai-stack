@@ -15,7 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        component: [rag-proxy, rag-watcher]
+        # ragpipe security scans are in github.com/aclater/ragpipe
+        component: [rag-watcher]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

@@ -246,8 +246,8 @@ assert_contains "ramalama mounts to /mnt/models"    "/mnt/models/model.file" "$(
 
 # Qwen3.5 specific checks
 assert_contains "ramalama description is Qwen3.5" "Qwen3.5-35B-A3B" "$(cat $QUADLET_SRC/ramalama.container)"
-assert_contains "ramalama has ctx-size 131072" "131072" "$(cat $QUADLET_SRC/ramalama.container)"
-assert_contains "ramalama has parallel 4" "parallel 4" "$(cat $QUADLET_SRC/ramalama.container)"
+assert_contains "ramalama has ctx-size 65536" "65536" "$(cat $QUADLET_SRC/ramalama.container)"
+assert_contains "ramalama has parallel 2" "parallel 2" "$(cat $QUADLET_SRC/ramalama.container)"
 assert_contains "ramalama has --jinja" "jinja" "$(cat $QUADLET_SRC/ramalama.container)"
 
 # ── 5. LiteLLM config ────────────────────────────────────────────────────────
