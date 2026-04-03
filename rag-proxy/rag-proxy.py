@@ -4,34 +4,29 @@ citations, and injects grounded context into chat completions."""
 
 import asyncio
 import functools
-import json
 import logging
 import os
 import sys
-import time
 from concurrent.futures import ThreadPoolExecutor
 
 import httpx
-import numpy as np
 import uvicorn
-from fastembed import TextEmbedding
 from fastapi import FastAPI, Request
-from fastapi.responses import StreamingResponse, JSONResponse
-from qdrant_client import QdrantClient
-
-from reranker import rerank
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastembed import TextEmbedding
 from grounding import (
-    SYSTEM_PROMPT,
-    build_system_message,
-    format_context,
-    determine_corpus_coverage,
-    parse_citations,
-    validate_citations,
-    strip_invalid_citations,
     build_metadata,
-    query_hash,
+    build_system_message,
+    determine_corpus_coverage,
+    format_context,
     log_audit,
+    parse_citations,
+    query_hash,
+    strip_invalid_citations,
+    validate_citations,
 )
+from qdrant_client import QdrantClient
+from reranker import rerank
 
 logging.basicConfig(
     level=logging.INFO,
@@ -78,24 +73,33 @@ def startup():
     collections = [c.name for c in qdrant.get_collections().collections]
     _collection_exists = COLLECTION_NAME in collections
     if not _collection_exists:
-        log.warning("Collection '%s' not found in Qdrant — RAG context will be empty until documents are ingested", COLLECTION_NAME)
+        log.warning(
+            "Collection '%s' not found in Qdrant — RAG context will be empty until documents are ingested",
+            COLLECTION_NAME,
+        )
 
     # fastembed uses ONNX Runtime (CPU-only) — no PyTorch, no GPU segfault risk
     log.info("Loading embedding model: %s (fastembed/ONNX)", EMBED_MODEL)
     embedder = TextEmbedding(EMBED_MODEL)
 
     from docstore import create_docstore
+
     docstore = create_docstore()
 
     # Warm up the reranker so first request isn't slow
     try:
         from reranker import warm_up
+
         warm_up()
     except Exception:
         log.warning("Reranker warm-up failed — will load on first request")
 
-    log.info("RAG proxy ready — forwarding to %s (thinking_budget=%d, embed_cache=%d)",
-             MODEL_URL, THINKING_BUDGET, EMBED_CACHE_SIZE)
+    log.info(
+        "RAG proxy ready — forwarding to %s (thinking_budget=%d, embed_cache=%d)",
+        MODEL_URL,
+        THINKING_BUDGET,
+        EMBED_CACHE_SIZE,
+    )
 
 
 @app.on_event("shutdown")
@@ -106,6 +110,7 @@ def shutdown():
 
 
 # ── Retrieval pipeline ───────────────────────────────────────────────────────
+
 
 @functools.lru_cache(maxsize=EMBED_CACHE_SIZE)
 def _embed_query(query: str) -> tuple:
@@ -161,14 +166,20 @@ def _hydrate_sync(refs: list[dict]) -> list[dict]:
         key = (ref["doc_id"], ref["chunk_id"])
         text = texts.get(key)
         if text is None:
-            log.warning("Orphaned vector: doc_id=%s chunk_id=%d — excluding from results", ref["doc_id"], ref["chunk_id"])
+            log.warning(
+                "Orphaned vector: doc_id=%s chunk_id=%d — excluding from results",
+                ref["doc_id"],
+                ref["chunk_id"],
+            )
             continue
-        hydrated.append({
-            "text": text,
-            "source": ref.get("source", "unknown"),
-            "doc_id": ref["doc_id"],
-            "chunk_id": ref["chunk_id"],
-        })
+        hydrated.append(
+            {
+                "text": text,
+                "source": ref.get("source", "unknown"),
+                "doc_id": ref["doc_id"],
+                "chunk_id": ref["chunk_id"],
+            }
+        )
 
     return hydrated
 
@@ -197,6 +208,7 @@ async def retrieve_and_rerank(user_query: str) -> tuple[list[dict], list[dict]]:
 
 
 # ── Request processing ───────────────────────────────────────────────────────
+
 
 async def process_chat_request(body: dict) -> tuple[dict, dict]:
     """Process a chat completion request with grounding.
@@ -304,7 +316,10 @@ def process_response(response_data: dict, ctx: dict) -> dict:
         for err in validation_errors:
             log.error(
                 "Invalid citation: query_hash=%s doc_id=%s chunk_id=%d reason=%s",
-                q_hash, err["doc_id"], err["chunk_id"], err["reason"],
+                q_hash,
+                err["doc_id"],
+                err["chunk_id"],
+                err["reason"],
             )
         # Strip invalid citations from the response — preserve the rest
         content = strip_invalid_citations(content, validation_errors)
@@ -334,6 +349,7 @@ def process_response(response_data: dict, ctx: dict) -> dict:
 
 # ── HTTP endpoints ───────────────────────────────────────────────────────────
 
+
 @app.api_route("/v1/chat/completions", methods=["POST"])
 async def chat_completions(request: Request):
     """Intercept chat completions, inject grounded RAG context, forward to model."""
@@ -352,15 +368,17 @@ async def chat_completions(request: Request):
         # alive for the duration of the stream — creating it in an
         # outer async-with closes it before the stream is consumed.
         async def stream_response():
-            async with httpx.AsyncClient(timeout=300) as client:
-                async with client.stream(
+            async with (
+                httpx.AsyncClient(timeout=300) as client,
+                client.stream(
                     "POST",
                     f"{MODEL_URL}/v1/chat/completions",
                     json=body,
                     headers={"Content-Type": "application/json"},
-                ) as resp:
-                    async for chunk in resp.aiter_bytes():
-                        yield chunk
+                ) as resp,
+            ):
+                async for chunk in resp.aiter_bytes():
+                    yield chunk
 
         return StreamingResponse(stream_response(), media_type="text/event-stream")
     else:
@@ -401,15 +419,15 @@ async def embeddings(request: Request):
         return JSONResponse({"error": "No input provided"}, status_code=400)
 
     loop = asyncio.get_event_loop()
-    vectors = await loop.run_in_executor(
-        _executor, lambda: [v.tolist() for v in embedder.embed(texts)]
-    )
+    vectors = await loop.run_in_executor(_executor, lambda: [v.tolist() for v in embedder.embed(texts)])
 
-    return JSONResponse({
-        "object": "list",
-        "data": [{"object": "embedding", "embedding": v, "index": i} for i, v in enumerate(vectors)],
-        "model": EMBED_MODEL,
-    })
+    return JSONResponse(
+        {
+            "object": "list",
+            "data": [{"object": "embedding", "embedding": v, "index": i} for i, v in enumerate(vectors)],
+            "model": EMBED_MODEL,
+        }
+    )
 
 
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])

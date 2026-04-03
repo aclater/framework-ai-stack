@@ -1,7 +1,8 @@
 """Tests for the reranker module."""
 
-import os
 import importlib
+import os
+
 import pytest
 
 
@@ -9,17 +10,20 @@ import pytest
 def _reset_module(monkeypatch):
     """Reset module-level state between tests."""
     import reranker as mod
+
     mod._model = None
     yield
 
 
 # ── Helper to reimport with env vars ─────────────────────────────────────────
 
+
 def _reload_reranker(**env_overrides):
     """Reimport reranker module with overridden env vars."""
     for k, v in env_overrides.items():
         os.environ[k] = v
     import reranker as mod
+
     importlib.reload(mod)
     for k in env_overrides:
         os.environ.pop(k, None)
@@ -28,14 +32,21 @@ def _reload_reranker(**env_overrides):
 
 # ── Test data ────────────────────────────────────────────────────────────────
 
+
 def _make_results(n=10):
     return [
-        {"text": f"Document chunk {i} about topic {chr(65 + i)}", "source": f"doc{i}.md", "chunk_id": i, "chunk_total": n}
+        {
+            "text": f"Document chunk {i} about topic {chr(65 + i)}",
+            "source": f"doc{i}.md",
+            "chunk_id": i,
+            "chunk_total": n,
+        }
         for i in range(n)
     ]
 
 
 # ── Tests: enabled path ─────────────────────────────────────────────────────
+
 
 def test_rerank_returns_top_n_results():
     mod = _reload_reranker(RERANKER_ENABLED="true", RERANKER_TOP_N="3", RERANKER_TOP_K="10")
@@ -63,7 +74,7 @@ def test_rerank_scores_monotonically_decreasing():
     ranked = mod.rerank("test query", results)
     scores = [r["reranker_score"] for r in ranked]
     for i in range(len(scores) - 1):
-        assert scores[i] >= scores[i + 1], f"Score at {i} ({scores[i]}) < score at {i+1} ({scores[i+1]})"
+        assert scores[i] >= scores[i + 1], f"Score at {i} ({scores[i]}) < score at {i + 1} ({scores[i + 1]})"
 
 
 def test_rerank_empty_input():
@@ -80,6 +91,7 @@ def test_rerank_fewer_than_top_n():
 
 
 # ── Tests: disabled path ─────────────────────────────────────────────────────
+
 
 def test_disabled_returns_top_n_passthrough():
     mod = _reload_reranker(RERANKER_ENABLED="false", RERANKER_TOP_N="3")
@@ -110,6 +122,7 @@ def test_disabled_no_reranker_score():
 
 
 # ── Tests: model swap ────────────────────────────────────────────────────────
+
 
 def test_model_swap_via_env():
     """RERANKER_MODEL env var changes the model name without error."""

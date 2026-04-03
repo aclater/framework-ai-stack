@@ -1,0 +1,6 @@
+# SC2086: Double quote to prevent globbing/splitting — intentional in sed
+#         substitutions where the variable is a controlled path
+# SC2015: A && B || C is not if-then-else — used intentionally for fallbacks
+# SC2034: Variable appears unused — some vars are used by sourced/eval'd code
+# SC2320: Redirect masking exit code — intentional in shift 2>/dev/null || true
+disable=SC2086,SC2015,SC2034,SC2320

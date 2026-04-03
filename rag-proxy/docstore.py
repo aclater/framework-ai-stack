@@ -20,7 +20,7 @@ Schema:
 import logging
 import os
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 log = logging.getLogger("docstore")
 
@@ -58,6 +58,7 @@ class DocstoreBackend(ABC):
 class PostgresDocstore(DocstoreBackend):
     def __init__(self, url: str):
         import psycopg2
+
         self._url = url
         self._conn = psycopg2.connect(url)
         self._conn.autocommit = True
@@ -76,26 +77,34 @@ class PostgresDocstore(DocstoreBackend):
             """)
 
     def upsert_chunk(self, doc_id: str, chunk_id: int, text: str, source: str) -> None:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         with self._conn.cursor() as cur:
-            cur.execute("""
+            cur.execute(
+                """
                 INSERT INTO chunks (doc_id, chunk_id, text, source, created_at)
                 VALUES (%s, %s, %s, %s, %s)
                 ON CONFLICT (doc_id, chunk_id)
                 DO UPDATE SET text = EXCLUDED.text, source = EXCLUDED.source
-            """, (doc_id, chunk_id, text, source, now))
+            """,
+                (doc_id, chunk_id, text, source, now),
+            )
 
     def upsert_chunks(self, chunks: list[dict]) -> None:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         with self._conn.cursor() as cur:
             from psycopg2.extras import execute_values
+
             values = [(c["doc_id"], c["chunk_id"], c["text"], c["source"], now) for c in chunks]
-            execute_values(cur, """
+            execute_values(
+                cur,
+                """
                 INSERT INTO chunks (doc_id, chunk_id, text, source, created_at)
                 VALUES %s
                 ON CONFLICT (doc_id, chunk_id)
                 DO UPDATE SET text = EXCLUDED.text, source = EXCLUDED.source
-            """, values)
+            """,
+                values,
+            )
 
     def get_chunk(self, doc_id: str, chunk_id: int) -> str | None:
         with self._conn.cursor() as cur:
@@ -108,13 +117,15 @@ class PostgresDocstore(DocstoreBackend):
             return {}
         with self._conn.cursor() as cur:
             # Build a VALUES list for batch lookup
-            from psycopg2.extras import execute_values
-            cur.execute("""
+            cur.execute(
+                """
                 SELECT doc_id, chunk_id, text FROM chunks
                 WHERE (doc_id, chunk_id) IN (
                     SELECT unnest(%s::text[]), unnest(%s::integer[])
                 )
-            """, ([r[0] for r in refs], [r[1] for r in refs]))
+            """,
+                ([r[0] for r in refs], [r[1] for r in refs]),
+            )
             return {(row[0], row[1]): row[2] for row in cur.fetchall()}
 
     def delete_doc(self, doc_id: str) -> None:
@@ -125,6 +136,7 @@ class PostgresDocstore(DocstoreBackend):
 class SQLiteDocstore(DocstoreBackend):
     def __init__(self, path: str):
         import sqlite3
+
         self._conn = sqlite3.connect(path)
         self._conn.execute("PRAGMA journal_mode=WAL")
 
@@ -142,23 +154,29 @@ class SQLiteDocstore(DocstoreBackend):
         self._conn.commit()
 
     def upsert_chunk(self, doc_id: str, chunk_id: int, text: str, source: str) -> None:
-        now = datetime.now(timezone.utc).isoformat()
-        self._conn.execute("""
+        now = datetime.now(UTC).isoformat()
+        self._conn.execute(
+            """
             INSERT INTO chunks (doc_id, chunk_id, text, source, created_at)
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT (doc_id, chunk_id)
             DO UPDATE SET text = excluded.text, source = excluded.source
-        """, (doc_id, chunk_id, text, source, now))
+        """,
+            (doc_id, chunk_id, text, source, now),
+        )
         self._conn.commit()
 
     def upsert_chunks(self, chunks: list[dict]) -> None:
-        now = datetime.now(timezone.utc).isoformat()
-        self._conn.executemany("""
+        now = datetime.now(UTC).isoformat()
+        self._conn.executemany(
+            """
             INSERT INTO chunks (doc_id, chunk_id, text, source, created_at)
             VALUES (?, ?, ?, ?, ?)
             ON CONFLICT (doc_id, chunk_id)
             DO UPDATE SET text = excluded.text, source = excluded.source
-        """, [(c["doc_id"], c["chunk_id"], c["text"], c["source"], now) for c in chunks])
+        """,
+            [(c["doc_id"], c["chunk_id"], c["text"], c["source"], now) for c in chunks],
+        )
         self._conn.commit()
 
     def get_chunk(self, doc_id: str, chunk_id: int) -> str | None:

@@ -2,10 +2,9 @@
 and state management."""
 
 import importlib.util
-import json
 import sys
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 # Stub out heavy dependencies that aren't installed in the test environment.
 # Use a dedicated dict so we can clean up without poisoning other test files.

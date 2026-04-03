@@ -1,0 +1,26 @@
+name: Dependency security scan
+
+on:
+  pull_request:
+  schedule:
+    # Weekly Monday 08:00 UTC
+    - cron: "0 8 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  pip-audit:
+    name: pip-audit
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [rag-proxy, rag-watcher]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install --quiet -r ${{ matrix.component }}/requirements.txt
+      - uses: pypa/gh-action-pip-audit@v1.1.0

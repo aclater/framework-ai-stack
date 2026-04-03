@@ -2,25 +2,26 @@
 
 import hashlib
 import json
-import os
-import pytest
 from unittest.mock import MagicMock
 
 
 def _reload():
     import importlib
+
     import grounding
+
     importlib.reload(grounding)
     return grounding
 
 
 # ── System prompt ────────────────────────────────────────────────────────────
 
+
 def test_system_prompt_hash_is_stable():
     """System prompt must not change without updating the hash."""
     mod = _reload()
     expected = hashlib.sha256(mod.SYSTEM_PROMPT.encode()).hexdigest()
-    assert mod.SYSTEM_PROMPT_HASH == expected
+    assert expected == mod.SYSTEM_PROMPT_HASH
 
 
 def test_system_prompt_contains_citation_format():
@@ -34,6 +35,7 @@ def test_system_prompt_contains_not_in_corpus_marker():
 
 
 # ── Context formatting ───────────────────────────────────────────────────────
+
 
 def test_format_context_includes_citation_labels():
     mod = _reload()
@@ -70,6 +72,7 @@ def test_build_system_message_empty_retrieval():
 
 # ── Citation parsing ─────────────────────────────────────────────────────────
 
+
 def test_parse_citations_valid():
     mod = _reload()
     text = "According to [abc-def-123:5] and [999-888:0], the answer is clear."
@@ -92,6 +95,7 @@ def test_parse_citations_ignores_malformed():
 
 
 # ── Citation validation ──────────────────────────────────────────────────────
+
 
 def test_validate_citations_all_valid():
     mod = _reload()
@@ -152,6 +156,7 @@ def test_invalid_citation_does_not_discard_response():
 
 # ── Grounding classification ─────────────────────────────────────────────────
 
+
 def test_classify_corpus():
     mod = _reload()
     assert mod.classify_grounding("Based on [a:0]", [("a", 0)], "full") == "corpus"
@@ -164,9 +169,7 @@ def test_classify_general():
 
 def test_classify_mixed():
     mod = _reload()
-    assert mod.classify_grounding(
-        "From [a:0]. ⚠️ Not in corpus: also this.", [("a", 0)], "full"
-    ) == "mixed"
+    assert mod.classify_grounding("From [a:0]. ⚠️ Not in corpus: also this.", [("a", 0)], "full") == "mixed"
 
 
 def test_classify_no_citations_with_context_is_general():
@@ -187,6 +190,7 @@ def test_corpus_coverage_full():
 
 # ── Metadata ─────────────────────────────────────────────────────────────────
 
+
 def test_metadata_corpus():
     mod = _reload()
     meta = mod.build_metadata("Answer [a:0] and [b:1]", [("a", 0), ("b", 1)], "full")
@@ -205,10 +209,12 @@ def test_metadata_general():
 
 # ── Audit logging ────────────────────────────────────────────────────────────
 
+
 def test_audit_log_no_text_content(caplog):
     """Audit log must never contain query text, response text, or document content."""
     mod = _reload()
     import logging
+
     with caplog.at_level(logging.INFO, logger="rag-proxy.audit"):
         mod.log_audit(
             q_hash="abc123",
@@ -226,6 +232,7 @@ def test_audit_log_no_text_content(caplog):
 def test_audit_log_structure(caplog):
     mod = _reload()
     import logging
+
     with caplog.at_level(logging.INFO, logger="rag-proxy.audit"):
         mod.log_audit(
             q_hash="hashval",
@@ -244,6 +251,7 @@ def test_audit_log_structure(caplog):
 
 
 # ── Empty retrieval ──────────────────────────────────────────────────────────
+
 
 def test_empty_retrieval_proceeds_to_llm():
     """Empty retrieval should not hard-stop. System message should note it."""

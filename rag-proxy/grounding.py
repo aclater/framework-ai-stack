@@ -14,7 +14,7 @@ import json
 import logging
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 log = logging.getLogger("rag-proxy.grounding")
 audit_log = logging.getLogger("rag-proxy.audit")
@@ -111,18 +111,22 @@ def validate_citations(
     for doc_id, chunk_id in citations:
         if (doc_id, chunk_id) not in retrieved_set:
             # Citation references a chunk that wasn't in the retrieved set
-            errors.append({
-                "doc_id": doc_id,
-                "chunk_id": chunk_id,
-                "reason": "not_in_retrieved_set",
-            })
+            errors.append(
+                {
+                    "doc_id": doc_id,
+                    "chunk_id": chunk_id,
+                    "reason": "not_in_retrieved_set",
+                }
+            )
         elif (doc_id, chunk_id) not in existing:
             # Citation references a chunk that doesn't exist in docstore
-            errors.append({
-                "doc_id": doc_id,
-                "chunk_id": chunk_id,
-                "reason": "not_in_docstore",
-            })
+            errors.append(
+                {
+                    "doc_id": doc_id,
+                    "chunk_id": chunk_id,
+                    "reason": "not_in_docstore",
+                }
+            )
         else:
             valid.append((doc_id, chunk_id))
 
@@ -202,6 +206,7 @@ def build_metadata(
 # Never logs query text, response text, or document content.
 # Only logs hashes, IDs, scores, and classification metadata.
 
+
 def query_hash(query_text: str) -> str:
     """SHA-256 hash of the raw query text for audit correlation."""
     return hashlib.sha256(query_text.encode()).hexdigest()
@@ -223,7 +228,7 @@ def log_audit(
     expansion) and citation quality monitoring without exposing content.
     """
     entry = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "query_hash": q_hash,
         "retrieved_chunks": [
             {"doc_id": c["doc_id"], "chunk_id": c["chunk_id"], "reranker_score": c.get("reranker_score")}

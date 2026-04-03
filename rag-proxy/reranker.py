@@ -70,7 +70,7 @@ def rerank(query: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     log.debug("Reranked %d candidates in %.1f ms", len(results), elapsed_ms)
 
-    for result, score in zip(results, scores):
+    for result, score in zip(results, scores, strict=False):
         result["reranker_score"] = float(score)
 
     ranked = sorted(results, key=lambda r: r["reranker_score"], reverse=True)

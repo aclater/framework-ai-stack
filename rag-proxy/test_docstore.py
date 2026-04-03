@@ -5,11 +5,12 @@ and are skipped if DOCSTORE_URL is not set or the connection fails.
 """
 
 import os
-import tempfile
+
 import pytest
 from docstore import SQLiteDocstore, create_docstore
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def sqlite_store(tmp_path):
@@ -23,6 +24,7 @@ def pg_store():
     url = os.environ.get("DOCSTORE_URL", "postgresql://litellm:litellm@127.0.0.1:5432/litellm")
     try:
         from docstore import PostgresDocstore
+
         store = PostgresDocstore(url)
         store.init_schema()
         # Clean up test data
@@ -45,6 +47,7 @@ def store(request, sqlite_store, pg_store):
 
 # ── Tests ────────────────────────────────────────────────────────────────────
 
+
 def test_upsert_and_get_single(store):
     store.upsert_chunk("test-doc1", 0, "hello world", "test.md")
     assert store.get_chunk("test-doc1", 0) == "hello world"
@@ -62,10 +65,7 @@ def test_get_missing_returns_none(store):
 
 
 def test_batch_upsert(store):
-    chunks = [
-        {"doc_id": "test-batch", "chunk_id": i, "text": f"chunk {i}", "source": "batch.md"}
-        for i in range(5)
-    ]
+    chunks = [{"doc_id": "test-batch", "chunk_id": i, "text": f"chunk {i}", "source": "batch.md"} for i in range(5)]
     store.upsert_chunks(chunks)
     for i in range(5):
         assert store.get_chunk("test-batch", i) == f"chunk {i}"
@@ -73,16 +73,10 @@ def test_batch_upsert(store):
 
 def test_batch_upsert_idempotent(store):
     """Re-ingesting the same doc produces no duplicate entries."""
-    chunks = [
-        {"doc_id": "test-idem", "chunk_id": i, "text": f"v1 chunk {i}", "source": "idem.md"}
-        for i in range(3)
-    ]
+    chunks = [{"doc_id": "test-idem", "chunk_id": i, "text": f"v1 chunk {i}", "source": "idem.md"} for i in range(3)]
     store.upsert_chunks(chunks)
 
-    chunks_v2 = [
-        {"doc_id": "test-idem", "chunk_id": i, "text": f"v2 chunk {i}", "source": "idem.md"}
-        for i in range(3)
-    ]
+    chunks_v2 = [{"doc_id": "test-idem", "chunk_id": i, "text": f"v2 chunk {i}", "source": "idem.md"} for i in range(3)]
     store.upsert_chunks(chunks_v2)
 
     for i in range(3):
@@ -90,10 +84,7 @@ def test_batch_upsert_idempotent(store):
 
 
 def test_batch_get(store):
-    chunks = [
-        {"doc_id": "test-bget", "chunk_id": i, "text": f"text {i}", "source": "bg.md"}
-        for i in range(5)
-    ]
+    chunks = [{"doc_id": "test-bget", "chunk_id": i, "text": f"text {i}", "source": "bg.md"} for i in range(5)]
     store.upsert_chunks(chunks)
 
     refs = [("test-bget", 0), ("test-bget", 2), ("test-bget", 4)]
@@ -119,10 +110,7 @@ def test_batch_get_empty(store):
 
 
 def test_delete_doc(store):
-    chunks = [
-        {"doc_id": "test-del", "chunk_id": i, "text": f"del {i}", "source": "d.md"}
-        for i in range(3)
-    ]
+    chunks = [{"doc_id": "test-del", "chunk_id": i, "text": f"del {i}", "source": "d.md"} for i in range(3)]
     store.upsert_chunks(chunks)
     store.delete_doc("test-del")
     for i in range(3):

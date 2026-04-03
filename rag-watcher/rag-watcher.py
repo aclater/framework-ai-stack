@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import uuid
+from datetime import UTC
 from pathlib import Path
 
 logging.basicConfig(
@@ -51,6 +52,7 @@ def save_state(state: dict) -> None:
 
 # ── Text extraction ──────────────────────────────────────────────────────────
 
+
 def extract_text(file_path: Path) -> str:
     """Extract text from a file based on its extension. Logs warnings on failure."""
     ext = file_path.suffix.lower()
@@ -61,6 +63,7 @@ def extract_text(file_path: Path) -> str:
     if ext == ".pdf":
         try:
             import pypdf
+
             reader = pypdf.PdfReader(str(file_path))
             return "\n\n".join(page.extract_text() or "" for page in reader.pages)
         except Exception:
@@ -70,6 +73,7 @@ def extract_text(file_path: Path) -> str:
     if ext == ".docx":
         try:
             import docx
+
             doc = docx.Document(str(file_path))
             return "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
         except Exception:
@@ -79,6 +83,7 @@ def extract_text(file_path: Path) -> str:
     if ext == ".pptx":
         try:
             from pptx import Presentation
+
             prs = Presentation(str(file_path))
             texts = []
             for slide in prs.slides:
@@ -93,6 +98,7 @@ def extract_text(file_path: Path) -> str:
     if ext == ".xlsx":
         try:
             import openpyxl
+
             wb = openpyxl.load_workbook(str(file_path), read_only=True, data_only=True)
             texts = []
             for ws in wb.worksheets:
@@ -109,6 +115,7 @@ def extract_text(file_path: Path) -> str:
 
 
 # ── Chunking (adapted from vector-embedder's RecursiveCharacterTextSplitter pattern) ─
+
 
 def chunk_text(text: str, chunk_size: int = 1024, overlap: int = 128) -> list[str]:
     """Split text into overlapping chunks using paragraph/sentence boundaries.
@@ -157,9 +164,7 @@ def get_drive_service():
         log.warning("Service account key not found: %s — Drive source disabled", creds_path)
         return None
 
-    creds = service_account.Credentials.from_service_account_file(
-        str(creds_path), scopes=GDRIVE_SCOPES
-    )
+    creds = service_account.Credentials.from_service_account_file(str(creds_path), scopes=GDRIVE_SCOPES)
     return build("drive", "v3", credentials=creds)
 
 
@@ -255,14 +260,12 @@ def load_drive_docs(staging_dir: Path) -> list[dict]:
         else:
             log.warning("Drive: no text extracted from %s", f.name)
         # Clean up staging file after extraction
-        try:
-            f.unlink()
-        except OSError:
-            pass
+        f.unlink(missing_ok=True)
     return docs
 
 
 # ── Git source (adapted from vector-embedder's GitLoader) ───────────────────
+
 
 def load_git_docs(repos_dir: Path) -> list[dict]:
     """Clone/pull git repos and extract text from matching files.
@@ -295,20 +298,25 @@ def load_git_docs(repos_dir: Path) -> list[dict]:
                 log.info("Git: pulling %s", repo_name)
                 result = subprocess.run(
                     ["git", "-C", str(repo_path), "pull", "--ff-only"],
-                    capture_output=True, timeout=60,
+                    capture_output=True,
+                    timeout=60,
                 )
                 if result.returncode != 0:
                     log.warning("Git: pull failed for %s, re-cloning", repo_name)
                     shutil.rmtree(repo_path)
                     subprocess.run(
                         ["git", "clone", "--depth", "1", url, str(repo_path)],
-                        check=True, capture_output=True, timeout=120,
+                        check=True,
+                        capture_output=True,
+                        timeout=120,
                     )
             else:
                 log.info("Git: cloning %s (shallow)", repo_name)
                 subprocess.run(
                     ["git", "clone", "--depth", "1", url, str(repo_path)],
-                    check=True, capture_output=True, timeout=120,
+                    check=True,
+                    capture_output=True,
+                    timeout=120,
                 )
         except Exception:
             log.warning("Git: failed to clone/pull %s — skipping", url)
@@ -333,6 +341,7 @@ def load_git_docs(repos_dir: Path) -> list[dict]:
 
 # ── Web source (adapted from vector-embedder's WebLoader) ───────────────────
 
+
 def load_web_docs() -> list[dict]:
     """Fetch web pages and extract text.
 
@@ -348,8 +357,9 @@ def load_web_docs() -> list[dict]:
         log.error("WEB_SOURCES is not valid JSON")
         return []
 
-    import requests
     from html.parser import HTMLParser
+
+    import requests
 
     class TextExtractor(HTMLParser):
         def __init__(self):
@@ -397,8 +407,10 @@ def load_web_docs() -> list[dict]:
 
 # ── Qdrant ingestion ─────────────────────────────────────────────────────────
 
+
 def get_qdrant_client():
     from qdrant_client import QdrantClient
+
     url = os.environ.get("QDRANT_URL", "http://127.0.0.1:6333")
     return QdrantClient(url=url, timeout=30)
 
@@ -414,7 +426,7 @@ def embed_texts(texts: list[str], batch_size: int = 64) -> list[list[float]]:
     embed_url = os.environ.get("EMBED_URL", "http://127.0.0.1:8090/v1/embeddings")
     vectors = []
     for i in range(0, len(texts), batch_size):
-        batch = texts[i:i + batch_size]
+        batch = texts[i : i + batch_size]
         resp = requests.post(embed_url, json={"input": batch}, timeout=120)
         resp.raise_for_status()
         data = resp.json()["data"]
@@ -435,7 +447,7 @@ def ensure_collection(qdrant, collection_name: str, vector_size: int):
     collection in place. If the collection already exists without
     quantization, it must be dropped and recreated.
     """
-    from qdrant_client.models import Distance, VectorParams, ScalarQuantization, ScalarQuantizationConfig, ScalarType
+    from qdrant_client.models import Distance, ScalarQuantization, ScalarQuantizationConfig, ScalarType, VectorParams
 
     collections = [c.name for c in qdrant.get_collections().collections]
     if collection_name not in collections:
@@ -462,6 +474,7 @@ def _point_id(doc_id: str, chunk_id: int) -> int:
 def _get_docstore():
     """Lazy-import and create docstore to avoid import at module level."""
     from docstore import create_docstore
+
     return create_docstore()
 
 
@@ -471,8 +484,9 @@ def ingest_docs(docs: list[dict]) -> bool:
     Qdrant payloads contain only {doc_id, chunk_id, source, created_at}.
     Full chunk text lives in the document store.
     """
+    from datetime import datetime
+
     from qdrant_client.models import PointStruct
-    from datetime import datetime, timezone
 
     if not docs:
         log.info("No documents to ingest")
@@ -488,12 +502,14 @@ def ingest_docs(docs: list[dict]) -> bool:
         doc_id = str(uuid.uuid5(uuid.NAMESPACE_URL, doc["source"]))
         chunks = chunk_text(doc["text"], chunk_size, chunk_overlap)
         for i, chunk in enumerate(chunks):
-            all_chunks.append({
-                "doc_id": doc_id,
-                "chunk_id": i,
-                "text": chunk,
-                "source": doc["source"],
-            })
+            all_chunks.append(
+                {
+                    "doc_id": doc_id,
+                    "chunk_id": i,
+                    "text": chunk,
+                    "source": doc["source"],
+                }
+            )
         log.info("Chunked %s → %d chunks (doc_id=%s)", doc["source"], len(chunks), doc_id)
 
     if not all_chunks:
@@ -517,7 +533,7 @@ def ingest_docs(docs: list[dict]) -> bool:
     # Ensure collection exists (idempotent — creates only if missing)
     ensure_collection(qdrant, collection_name, len(vectors[0]))
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     points = [
         PointStruct(
             id=_point_id(chunk["doc_id"], chunk["chunk_id"]),
@@ -529,7 +545,7 @@ def ingest_docs(docs: list[dict]) -> bool:
                 "created_at": now,
             },
         )
-        for vec, chunk in zip(vectors, all_chunks)
+        for vec, chunk in zip(vectors, all_chunks, strict=True)
     ]
 
     batch_size = 100
@@ -541,6 +557,7 @@ def ingest_docs(docs: list[dict]) -> bool:
 
 
 # ── Poll loop ────────────────────────────────────────────────────────────────
+
 
 def poll_once(staging_dir: Path, repos_dir: Path) -> None:
     """Single poll iteration: gather docs from all sources, ingest into Qdrant."""
