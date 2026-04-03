@@ -147,4 +147,4 @@ Document loading patterns (git shallow clone with incremental pull, web extracti
 
 ## License
 
-MIT
+AGPL-3.0-or-later
