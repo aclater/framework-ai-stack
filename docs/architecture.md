@@ -43,7 +43,7 @@ RAG watcher (polls every 15 minutes)
   │  2. Extract text (PDF, DOCX, PPTX, XLSX, HTML, Markdown)
   │  3. Chunk with RecursiveCharacterTextSplitter
   │  4. Persist chunks to document store (Postgres)
-  │  5. Embed with BAAI/bge-base-en-v1.5 (fastembed/ONNX, CPU-only)
+  │  5. Embed with bge-base-en-v1.5 (ONNX Runtime, CPU-only)
   │  6. Upsert reference-only payloads to Qdrant
   ▼
 Qdrant (vectors) + Postgres (chunk text)
@@ -59,11 +59,11 @@ OpenAI-compatible API gateway. Routes all model aliases to the ragpipe. Provides
 
 ### ragpipe (:8090)
 
-The core intelligence layer. Intercepts chat completion requests, performs retrieval, reranking, and citation-aware context injection, then post-processes the response with grounding classification and citation validation. Both the embedding model and the reranker run on CPU — ROCm PyTorch segfaults on gfx1151 for sentence-transformers models (see ADR-013).
+The core intelligence layer. Intercepts chat completion requests, performs retrieval, reranking, and citation-aware context injection, then post-processes the response with grounding classification and citation validation. Uses raw ONNX Runtime (no fastembed/PyTorch) for both embedding and reranking — ~708 MB RSS, 370ms startup. Docstore hydration uses asyncpg connection pooling with an LRU chunk cache for 55% faster repeated queries.
 
-See [grounding.md](grounding.md) for the full grounding specification.
+See [grounding.md](grounding.md) for the full grounding specification. Full configuration reference at [github.com/aclater/ragpipe](https://github.com/aclater/ragpipe).
 
-**Image:** `ghcr.io/aclater/ragpipe` (UBI9/python-311, deps + ONNX models baked in)
+**Image:** `ghcr.io/aclater/ragpipe` (UBI9/python-311, ONNX models baked in, ~708 MB RSS)
 
 ### Qdrant (:6333)
 

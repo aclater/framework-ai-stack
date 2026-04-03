@@ -10,7 +10,8 @@ Wants=network-online.target
 Requires=qdrant.service postgres.service
 
 [Container]
-# Published image from ghcr.io — models baked in at build time
+# Published image from ghcr.io — ONNX models baked in at build time
+# RSS ~708 MB (raw ONNX Runtime, no fastembed/PyTorch)
 Image=ghcr.io/aclater/ragpipe:main
 
 # Writable model cache for ONNX models (persists across restarts)
@@ -22,17 +23,14 @@ User=1001
 Environment=MODEL_URL=http://host.containers.internal:8080
 Environment=QDRANT_URL=http://host.containers.internal:6333
 Environment=QDRANT_COLLECTION=documents
-Environment=RAG_TOP_K=40
-Environment=RAG_PROXY_PORT=8090
 
-# Document store — hydrates chunk text from Postgres at query time
+# Override ragpipe defaults for wider retrieval window (default: 20/5)
+Environment=RAG_TOP_K=40
+Environment=RERANKER_TOP_N=15
+
+# Document store — asyncpg connection pool for hydration, LRU chunk cache
 Environment=DOCSTORE_BACKEND=postgres
 Environment=DOCSTORE_URL=postgresql://litellm:litellm@host.containers.internal:5432/litellm
-
-# Reranker — lightweight ONNX model (22M params, sub-second on CPU)
-Environment=RERANKER_ENABLED=true
-Environment=RERANKER_MODEL=Xenova/ms-marco-MiniLM-L-6-v2
-Environment=RERANKER_TOP_N=15
 
 # Model cache location (inside the writable volume)
 Environment=RAGPIPE_MODEL_CACHE=/home/default/.cache/ragpipe
@@ -53,8 +51,8 @@ Restart=on-failure
 RestartSec=10s
 TimeoutStartSec=300s
 
-# Resource limits
-MemoryMax=5G
+# Resource limits — ragpipe uses ~708 MB RSS with ONNX Runtime
+MemoryMax=2G
 CPUQuota=200%
 
 [Install]
