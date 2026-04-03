@@ -83,7 +83,7 @@ The `doc_id` is a deterministic UUID5 derived from the source URI, ensuring the 
 
 ### RamaLama / llama-server (:8080)
 
-Serves the Qwen3.5-35B-A3B model via llama-server. The model uses Mixture of Experts (MoE) with 3B active parameters from 35B total. KV cache uses q8_0 quantization (1360 MiB vs 2560 MiB at f16), and flash attention is enabled for bandwidth efficiency on 65536-token contexts (32K per slot).
+Serves the Qwen3.5-35B-A3B model via llama-server. The model uses Mixture of Experts (MoE) with 3B active parameters from 35B total. KV cache uses q4_0 quantization (360 MiB for 65536 ctx with 2 parallel slots), and flash attention is enabled.
 
 **Image:** `quay.io/ramalama/rocm:latest`
 

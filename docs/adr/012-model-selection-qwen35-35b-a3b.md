@@ -21,7 +21,7 @@ Use Qwen3.5-35B-A3B with Unsloth's UD-Q4_K_XL quantization. The Unsloth quantiza
 ## Consequences
 
 - 3B active parameters delivers near-3B inference speed at 35B model quality due to MoE architecture
-- ~22 GB VRAM with 131072 context window and q4_0 KV cache (360 MiB)
+- ~22 GB VRAM with 65536 context window and q4_0 KV cache (360 MiB)
 - `--jinja` flag required for thinking mode chat template support
 - Thinking and non-thinking modes supported in a single model, controlled by the chat template
 - Vision-capable architecture (`--mmproj`) available but deferred pending ramalama multimodal support

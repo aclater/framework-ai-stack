@@ -94,9 +94,9 @@
 <!-- ragpipe box (taller to show full pipeline) -->
 <rect x="30" y="192" width="360" height="118" rx="8" stroke-width="0.5" class="c-coral-fill"/>
 <text class="th c-coral-text" x="210" y="210" text-anchor="middle" dominant-baseline="central">ragpipe</text>
-<text class="ts c-coral-text" x="210" y="228" text-anchor="middle" dominant-baseline="central">1. Qdrant vector search (20 candidates)</text>
+<text class="ts c-coral-text" x="210" y="228" text-anchor="middle" dominant-baseline="central">1. Qdrant vector search (40 candidates)</text>
 <text class="ts c-coral-text" x="210" y="244" text-anchor="middle" dominant-baseline="central">2. Docstore hydration (batch text lookup)</text>
-<text class="ts c-coral-text" x="210" y="260" text-anchor="middle" dominant-baseline="central">3. Cross-encoder reranker (MiniLM) → top 5</text>
+<text class="ts c-coral-text" x="210" y="260" text-anchor="middle" dominant-baseline="central">3. Cross-encoder reranker (MiniLM) → top 15</text>
 <text class="ts c-coral-text" x="210" y="276" text-anchor="middle" dominant-baseline="central">4. Grounding prompt + [doc_id:chunk_id] labels</text>
 <text class="ts c-coral-text" x="210" y="292" text-anchor="middle" dominant-baseline="central">5. Post-response: cite → validate → classify → audit</text>
 
@@ -122,13 +122,13 @@
 
 <!-- RamaLama dashed container -->
 <rect x="24" y="332" width="378" height="120" rx="6" fill="none" stroke-dasharray="4 3" stroke-width="0.5" stroke="#888780"/>
-<text class="tl muted" x="37" y="325" dominant-baseline="central">RamaLama · ROCm · q8_0 KV cache</text>
+<text class="tl muted" x="37" y="325" dominant-baseline="central">RamaLama · ROCm · q4_0 KV cache</text>
 
 <!-- Qwen model -->
 <rect x="42" y="346" width="344" height="92" rx="8" stroke-width="0.5" class="c-teal-fill"/>
 <text class="th c-teal-text" x="214" y="370" text-anchor="middle" dominant-baseline="central">Qwen3.5-35B-A3B</text>
 <text class="ts c-teal-text" x="214" y="392" text-anchor="middle" dominant-baseline="central">MoE · 3B active params · ~22 GB</text>
-<text class="ts c-teal-text" x="214" y="412" text-anchor="middle" dominant-baseline="central">thinking + non-thinking · ctx 131072</text>
+<text class="ts c-teal-text" x="214" y="412" text-anchor="middle" dominant-baseline="central">flash attn · ctx 65536 · 2 slots</text>
 
 <!-- Arrow model → GPU -->
 <line x1="210" y1="452" x2="210" y2="482" stroke="#888780" stroke-width="1" marker-end="url(#arrow)"/>

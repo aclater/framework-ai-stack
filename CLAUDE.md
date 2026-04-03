@@ -66,14 +66,7 @@ Configured via environment variables in `~/.config/llm-stack/env`:
 - `WEB_SOURCES` — JSON list: `["https://example.com/docs"]`
 
 ## ragpipe configuration
-- `RERANKER_ENABLED` — true/false (default: true)
-- `RERANKER_MODEL` — cross-encoder model (default: cross-encoder/ms-marco-MiniLM-L-6-v2)
-- `RERANKER_DEVICE` — cpu/cuda (default: cpu — GPU segfaults on gfx1151, see ADR-013)
-- `RERANKER_TOP_N` — results after reranking (default: 5)
-- `RAG_TOP_K` — Qdrant candidates before reranking (default: 20)
-- `EMBED_DEVICE` — cpu/cuda (default: cpu — same gfx1151 issue as reranker)
-
-- `DOCSTORE_BACKEND` — postgres or sqlite (default: postgres)
+ragpipe is an external project (github.com/aclater/ragpipe). See its README for the full config reference. Key overrides in the quadlet: `RAG_TOP_K=40`, `RERANKER_TOP_N=15`.
 
 ## Container images
 - ragpipe: ghcr.io/aclater/ragpipe (UBI9/python-311, deps + ONNX models baked in)
