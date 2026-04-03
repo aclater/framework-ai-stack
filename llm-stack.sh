@@ -17,8 +17,10 @@ UNITS=(postgres qdrant ramalama ragpipe litellm ragstuffer open-webui)
 # and are overlaid onto the base quadlets/ during install.
 #
 # Profiles:
-#   nvidia — NVIDIA GPU (CUDA), selects Qwen3.5-9B for ≤16 GB VRAM
-#   rocm   — AMD GPU (ROCm), base quadlets, selects Qwen3.5-35B-A3B for ≥32 GB VRAM
+#   nvidia — NVIDIA GPU (CUDA)
+#   rocm   — AMD GPU (ROCm)
+# Model selection is controlled by MODEL_PREFERENCE (general or coder)
+# combined with available VRAM. See env.example for details.
 _detect_gpu() {
     if command -v nvidia-smi &>/dev/null && nvidia-smi &>/dev/null; then
         GPU_VENDOR="nvidia"
@@ -378,11 +380,15 @@ declare -A QWEN35_35B_SIZES=(
 declare -A QWEN35_9B_SIZES=(
     [Q4_K_XL]=5730   [Q6_K_XL]=8980   [Q8_0]=9750
 )
+declare -A QWEN3_CODER_30B_SIZES=(
+    [Q2_K]=10500  [Q3_K_S]=12400  [Q3_K_M]=13700  [Q4_K_S]=16300  [Q4_K_M]=17300
+)
 # KV cache size per 1K context tokens (MB) at each quantization level
 # These are approximate — actual size depends on model architecture
 declare -A KV_PER_1K_CTX=(
     [q4_0_35b]=5.5   [q8_0_35b]=11.0
     [q4_0_9b]=8.8    [q8_0_9b]=17.6
+    [q4_0_coder]=5.5  [q8_0_coder]=11.0
 )
 
 cmd_tune() {
@@ -400,9 +406,47 @@ cmd_tune() {
     log "  CPU:      $cpu_cores cores"
     echo ""
 
-    # ── Model family selection (based on VRAM) ──────────────────────────
+    # ── Model preference ─────────────────────────────────────────────────
+    # Read MODEL_PREFERENCE from env file. If not set, ask interactively.
+    # Persisted in tune.conf so future retunes honor it.
+    local model_pref="${MODEL_PREFERENCE:-}"
+    if [[ -z "$model_pref" ]]; then
+        # Source env file to check for preference
+        local env_file="$CONFIG_DIR/env"
+        if [[ -f "$env_file" ]]; then
+            model_pref=$(grep -oP '^MODEL_PREFERENCE=\K\S+' "$env_file" 2>/dev/null || true)
+        fi
+    fi
+
+    if [[ -z "$model_pref" ]]; then
+        echo ""
+        echo "  Model families:"
+        echo "    general — Qwen3.5 (best for RAG and general use)"
+        echo "    coder   — Qwen3-Coder (code-focused, also handles general queries)"
+        echo ""
+        read -rp "  Select model family [general]: " model_pref
+        model_pref="${model_pref:-general}"
+
+        # Persist the preference so future tunes/deploys honor it
+        local env_file="$CONFIG_DIR/env"
+        if [[ -f "$env_file" ]]; then
+            if grep -q '^MODEL_PREFERENCE=' "$env_file" 2>/dev/null; then
+                sed -i "s/^MODEL_PREFERENCE=.*/MODEL_PREFERENCE=$model_pref/" "$env_file"
+            elif grep -q '^# MODEL_PREFERENCE=' "$env_file" 2>/dev/null; then
+                sed -i "s/^# MODEL_PREFERENCE=.*/MODEL_PREFERENCE=$model_pref/" "$env_file"
+            else
+                echo "MODEL_PREFERENCE=$model_pref" >> "$env_file"
+            fi
+            ok "Saved MODEL_PREFERENCE=$model_pref to env"
+        fi
+    fi
+    ok "Model preference: $model_pref"
+
+    # ── Model family selection ─────────────────────────────────────────
     local model_family
-    if [[ "$GPU_VRAM_MB" -ge 32000 ]]; then
+    if [[ "$model_pref" == "coder" ]]; then
+        model_family="coder"
+    elif [[ "$GPU_VRAM_MB" -ge 32000 ]]; then
         model_family="35b"
     else
         model_family="9b"
@@ -428,6 +472,16 @@ cmd_tune() {
         else
             quant="Q4_K_XL"; model_mb=${QWEN35_35B_SIZES[Q4_K_XL]}
         fi
+    elif [[ "$model_family" == "coder" ]]; then
+        if [[ $(( vram_available )) -ge ${QWEN3_CODER_30B_SIZES[Q4_K_M]} ]]; then
+            quant="Q4_K_M"; model_mb=${QWEN3_CODER_30B_SIZES[Q4_K_M]}
+        elif [[ $(( vram_available )) -ge ${QWEN3_CODER_30B_SIZES[Q3_K_M]} ]]; then
+            quant="Q3_K_M"; model_mb=${QWEN3_CODER_30B_SIZES[Q3_K_M]}
+        elif [[ $(( vram_available )) -ge ${QWEN3_CODER_30B_SIZES[Q3_K_S]} ]]; then
+            quant="Q3_K_S"; model_mb=${QWEN3_CODER_30B_SIZES[Q3_K_S]}
+        else
+            quant="Q2_K"; model_mb=${QWEN3_CODER_30B_SIZES[Q2_K]}
+        fi
     else
         if [[ $(( vram_available )) -ge ${QWEN35_9B_SIZES[Q8_0]} ]]; then
             quant="Q8_0"; model_mb=${QWEN35_9B_SIZES[Q8_0]}
@@ -438,8 +492,14 @@ cmd_tune() {
         fi
     fi
 
+    local model_display
+    case "$model_family" in
+        35b)   model_display="Qwen3.5-35B-A3B" ;;
+        9b)    model_display="Qwen3.5-9B" ;;
+        coder) model_display="Qwen3-Coder-30B-A3B" ;;
+    esac
     local vram_after_model=$(( vram_available - model_mb ))
-    ok "Model: Qwen3.5-${model_family^^}-A3B $quant (${model_mb} MB) — ${vram_after_model} MB VRAM remaining"
+    ok "Model: $model_display $quant (${model_mb} MB) — ${vram_after_model} MB VRAM remaining"
 
     # ── KV cache type ───────────────────────────────────────────────────
     # Use q8_0 if we have >2 GB VRAM headroom after model, otherwise q4_0
@@ -454,7 +514,9 @@ cmd_tune() {
     # ── Context size and parallel slots ─────────────────────────────────
     # Budget: remaining VRAM after model, minus 500 MB safety margin
     # Each slot gets ctx_size/parallel tokens of KV cache
-    local kv_key="${cache_type}_${model_family}"
+    local kv_family="$model_family"
+    [[ "$kv_family" == "coder" ]] && kv_family="coder"
+    local kv_key="${cache_type}_${kv_family}"
     local kv_per_1k=${KV_PER_1K_CTX[$kv_key]:-8}
     local kv_budget_mb=$(( vram_after_model - 500 ))
     [[ "$kv_budget_mb" -lt 256 ]] && kv_budget_mb=256
@@ -508,6 +570,15 @@ cmd_tune() {
         model_file="Qwen3.5-35B-A3B-UD-${quant}.gguf"
         model_size_hint="~$(( model_mb / 1024 )) GB"
         model_desc="Qwen3.5-35B-A3B ${quant}"
+    elif [[ "$model_family" == "coder" ]]; then
+        model_repo="unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF"
+        if [[ "$quant" == "Q2_K" || "$quant" == "Q3_K_S" || "$quant" == "Q3_K_M" || "$quant" == "Q4_K_S" || "$quant" == "Q4_K_M" ]]; then
+            model_file="Qwen3-Coder-30B-A3B-Instruct-${quant}.gguf"
+        else
+            model_file="Qwen3-Coder-30B-A3B-Instruct-UD-${quant}.gguf"
+        fi
+        model_size_hint="~$(( model_mb / 1024 )) GB"
+        model_desc="Qwen3-Coder-30B-A3B ${quant}"
     else
         model_repo="unsloth/Qwen3.5-9B-GGUF"
         if [[ "$quant" == "Q8_0" ]]; then
@@ -525,6 +596,9 @@ cmd_tune() {
 # Auto-generated by llm-stack.sh tune on $(date -Iseconds)
 # Hardware: $GPU_VENDOR $GPU_NAME, ${GPU_VRAM_MB} MB VRAM, ${sys_ram_mb} MB RAM, ${cpu_cores} cores
 # Re-run: ./llm-stack.sh tune
+
+# Model preference (general or coder)
+MODEL_PREFERENCE="$model_pref"
 
 # Model
 MODEL_REPO="$model_repo"
