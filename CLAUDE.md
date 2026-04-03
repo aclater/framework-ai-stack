@@ -32,7 +32,7 @@ rag-watcher (polls Drive, git, web → extract → chunk → embed)
 - Retrieval: Qdrant search → docstore hydration → reranker → grounding → LLM
 - Qdrant collection uses int8 scalar quantization (always_ram for HNSW rescoring)
 - doc_id is deterministic UUID5 from source URI — re-ingest is idempotent
-- KV cache uses q8_0 quantization (1360 MiB vs 2560 MiB at f16)
+- KV cache uses q4_0 quantization (360 MiB for 65536 ctx with 2 parallel slots)
 - Empty retrieval is not an error — model answers from general knowledge with prefix
 - Audit log captures grounding decisions without logging text content
 
@@ -72,11 +72,11 @@ Configured via environment variables in `~/.config/llm-stack/env`:
 - `RERANKER_TOP_N` — results after reranking (default: 5)
 - `RAG_TOP_K` — Qdrant candidates before reranking (default: 20)
 - `EMBED_DEVICE` — cpu/cuda (default: cpu — same gfx1151 issue as reranker)
-- `THINKING_BUDGET` — token budget for model reasoning (default: 1024)
+
 - `DOCSTORE_BACKEND` — postgres or sqlite (default: postgres)
 
 ## Container images
-- ragpipe: localhost/ragpipe (built from ubi9/python-311, deps + models baked in)
+- ragpipe: ghcr.io/aclater/ragpipe (UBI9/python-311, deps + ONNX models baked in)
 - rag-watcher: localhost/rag-watcher (built from ubi10, deps + models baked in)
 - postgres: sclorg/postgresql-16-c9s (LiteLLM state + document store)
 - qdrant, litellm, ramalama, open-webui: upstream images

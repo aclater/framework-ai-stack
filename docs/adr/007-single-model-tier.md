@@ -19,5 +19,5 @@ Run a single Qwen3.5-35B-A3B instance serving all four LiteLLM aliases (default,
 - Memory freed: three containers (~57 GB) replaced by one (~22 GB), leaving ~42 GB VRAM for KV cache
 - LiteLLM aliases all route to the same backend — alias selection is a client-side hint, not a model switch
 - Thinking/non-thinking mode controlled by the model's chat template, not by running separate instances
-- Context window: 131072 tokens with 4 parallel slots, q8_0 KV cache (1360 MiB)
+- Context window: 65536 tokens with 2 parallel slots, q4_0 KV cache (360 MiB)
 - Embedding tier removed: the separate Qwen2.5-14B for embeddings was replaced by sentence-transformers running in the watcher and proxy containers

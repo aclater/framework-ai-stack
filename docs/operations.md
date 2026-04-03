@@ -240,22 +240,19 @@ GitHub Actions run on every push to `main` and on pull requests:
 
 All configuration is via environment variables in `~/.config/llm-stack/env` and the individual quadlet files.
 
-### RAG proxy
+### ragpipe
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MODEL_URL` | `http://127.0.0.1:8080` | Model endpoint |
-| `QDRANT_URL` | `http://127.0.0.1:6333` | Qdrant endpoint |
+See [ragpipe documentation](https://github.com/aclater/ragpipe) for the full configuration reference. Key overrides set in the quadlet:
+
+| Variable | Quadlet value | Description |
+|----------|---------------|-------------|
+| `MODEL_URL` | `http://host.containers.internal:8080` | LLM endpoint |
+| `QDRANT_URL` | `http://host.containers.internal:6333` | Qdrant endpoint |
 | `QDRANT_COLLECTION` | `documents` | Collection name |
-| `EMBED_MODEL` | `BAAI/bge-base-en-v1.5` | Embedding model (fastembed/ONNX) |
-| `RAG_TOP_K` | `20` | Qdrant candidate count |
-| `RERANKER_ENABLED` | `true` | Enable/disable reranker |
-| `RERANKER_MODEL` | `Xenova/ms-marco-MiniLM-L-6-v2` | Cross-encoder model (fastembed/ONNX) |
-| `RERANKER_TOP_N` | `5` | Results after reranking |
-| `THINKING_BUDGET` | `1024` | Token budget for model reasoning |
-| `EMBED_CACHE_SIZE` | `256` | LRU cache size for query embeddings |
+| `RAG_TOP_K` | `40` | Qdrant candidates before reranking |
+| `RERANKER_TOP_N` | `15` | Results after reranking |
 | `DOCSTORE_BACKEND` | `postgres` | `postgres` or `sqlite` |
-| `DOCSTORE_URL` | *(required)* | Postgres connection string |
+| `DOCSTORE_URL` | `postgresql://litellm:litellm@.../litellm` | Postgres connection string |
 
 ### RAG watcher
 

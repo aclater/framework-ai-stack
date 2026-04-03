@@ -20,7 +20,7 @@ Use UBI (Universal Base Image) containers wherever possible, with SELinux enforc
 
 | Container | Image | SELinux | Rationale |
 |-----------|-------|---------|-----------|
-| ragpipe | `localhost/ragpipe` (from ubi9/python-311) | Enforcing | Pre-built with deps + models baked in |
+| ragpipe | `ghcr.io/aclater/ragpipe` (UBI9/python-311) | Enforcing | Pre-built with deps + models baked in |
 | rag-watcher | `localhost/rag-watcher` (from ubi10) | Enforcing | Pre-built with deps + models baked in |
 | postgres | `sclorg/postgresql-16-c9s` | Enforcing | Red Hat-maintained Postgres |
 

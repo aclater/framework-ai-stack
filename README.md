@@ -11,7 +11,7 @@ Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB
 | postgres | `quay.io/sclorg/postgresql-16-c9s` | 5432 | LiteLLM state + document store |
 | qdrant | `docker.io/qdrant/qdrant` | 6333 | Vector search (int8 scalar quantization) |
 | ramalama | `quay.io/ramalama/rocm:latest` | 8080 | Qwen3.5-35B-A3B UD-Q4\_K\_XL (~22 GB, q8\_0 KV cache) |
-| ragpipe | `localhost/ragpipe` (built from ubi9/python-311) | 8090 | Search → hydrate → rerank → ground → cite → inject |
+| ragpipe | ghcr.io/aclater/ragpipe (UBI9/python-311) | 8090 | Search → hydrate → rerank → ground → cite → inject |
 | litellm | `ghcr.io/berriai/litellm:main-stable` | 4000 | OpenAI-compatible proxy |
 | open-webui | `ghcr.io/open-webui/open-webui:v0.8.6` | 3000 | Chat UI, pinned to v0.8.6 |
 | rag-watcher | `localhost/rag-watcher` (built from ubi10) | — | Ingests from Drive, git repos, and web URLs into docstore + Qdrant |
