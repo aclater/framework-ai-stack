@@ -416,7 +416,12 @@ cmd_tune() {
     local vram_available=$(( GPU_VRAM_MB - overhead_mb ))
 
     if [[ "$model_family" == "35b" ]]; then
-        if [[ $(( vram_available )) -ge ${QWEN35_35B_SIZES[Q8_K_XL]} ]]; then
+        # ROCm on gfx1151 hangs during context allocation with Q8 (45 GB+).
+        # Cap at Q6_K_XL for ROCm until upstream fixes large VRAM allocations.
+        local max_quant_35b="Q8_K_XL"
+        [[ "$GPU_VENDOR" == "rocm" ]] && max_quant_35b="Q6_K_XL"
+
+        if [[ "$max_quant_35b" == "Q8_K_XL" ]] && [[ $(( vram_available )) -ge ${QWEN35_35B_SIZES[Q8_K_XL]} ]]; then
             quant="Q8_K_XL"; model_mb=${QWEN35_35B_SIZES[Q8_K_XL]}
         elif [[ $(( vram_available )) -ge ${QWEN35_35B_SIZES[Q6_K_XL]} ]]; then
             quant="Q6_K_XL"; model_mb=${QWEN35_35B_SIZES[Q6_K_XL]}
@@ -484,15 +489,12 @@ cmd_tune() {
     ok "Threads: $threads (of $cpu_cores logical)"
 
     # ── mlock ───────────────────────────────────────────────────────────
-    # Lock model in RAM if system has >16 GB free after estimated usage
-    local estimated_sys_usage=8000  # OS + containers + desktop
+    # Lock model in RAM to prevent swapping. Requires RLIMIT_MEMLOCK
+    # to be raised (e.g. via /etc/security/limits.d/). Disabled by
+    # default because rootless containers inherit the default 64K limit.
+    # Enable manually in tune.conf after raising the ulimit.
     local mlock_flag=""
-    if [[ $(( sys_ram_mb - estimated_sys_usage )) -gt 16000 ]]; then
-        mlock_flag="--mlock"
-        ok "mlock: enabled ($(( sys_ram_mb - estimated_sys_usage )) MB sys RAM headroom)"
-    else
-        ok "mlock: disabled (insufficient sys RAM headroom)"
-    fi
+    ok "mlock: disabled (raise RLIMIT_MEMLOCK and edit tune.conf to enable)"
 
     # ── Sampling parameters ─────────────────────────────────────────────
     # Conservative defaults for RAG — prioritize accuracy over creativity
