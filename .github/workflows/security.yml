@@ -9,19 +9,14 @@ on:
 permissions:
   contents: read
 
+# Python dependency security scans for ragpipe and ragstuffer
+# run in their own repos:
+# - github.com/aclater/ragpipe
+# - github.com/aclater/ragstuffer
+
 jobs:
-  pip-audit:
-    name: pip-audit
+  placeholder:
+    name: No local Python dependencies
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        # ragpipe security scans are in github.com/aclater/ragpipe
-        component: [rag-watcher]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install dependencies
-        run: pip install --quiet -r ${{ matrix.component }}/requirements.txt
-      - uses: pypa/gh-action-pip-audit@v1.1.0
+      - run: echo "Security scans for ragpipe and ragstuffer run in their own repos"

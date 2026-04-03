@@ -9,7 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QUADLET_DIR="$HOME/.config/containers/systemd"
 CONFIG_DIR="$HOME/.config/llm-stack"
-UNITS=(postgres qdrant ramalama ragpipe litellm rag-watcher open-webui)
+UNITS=(postgres qdrant ramalama ragpipe litellm ragstuffer open-webui)
 
 # ── GPU detection ────────────────────────────────────────────────────────────
 # Auto-detect GPU vendor and VRAM to select the right container image, model,
@@ -116,7 +116,7 @@ ${BOLD}First-time setup (run in order):${RESET}
   pull-image    pull the RamaLama ROCm container image
   tune          auto-detect hardware and compute optimal parameters
   pull-models   download model (size depends on tune)
-  build         build ragpipe and rag-watcher container images
+  build         build ragpipe and ragstuffer container images
   install       install quadlets to systemd (applies tune.conf)
   up            start all services
 
@@ -613,10 +613,10 @@ cmd_build() {
         && ok "ghcr.io/aclater/ragpipe:main" \
         || fail "ragpipe pull failed"
 
-    log "Building rag-watcher image..."
-    podman build -t localhost/rag-watcher:latest "$SCRIPT_DIR/rag-watcher/" \
-        && ok "localhost/rag-watcher:latest" \
-        || fail "rag-watcher build failed"
+    log "Building ragstuffer image..."
+    podman build -t localhost/ragstuffer:latest "$SCRIPT_DIR/ragstuffer/" \
+        && ok "localhost/ragstuffer:latest" \
+        || fail "ragstuffer build failed"
 
     header "Images built"
     podman images --filter reference='localhost/rag-*' --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.Created}}"
@@ -827,7 +827,7 @@ cmd_logs() {
         model)       journalctl --user -u ramalama -f ;;
         proxy)       journalctl --user -u litellm -f ;;
         ragpipe)     journalctl --user -u ragpipe -f ;;
-        rag|watcher) journalctl --user -u rag-watcher -f ;;
+        rag|watcher) journalctl --user -u ragstuffer -f ;;
         qdrant)      journalctl --user -u qdrant -f ;;
         webui)       journalctl --user -u open-webui -f ;;
         postgres|db) journalctl --user -u postgres -f ;;

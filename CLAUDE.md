@@ -31,7 +31,7 @@ clients → LiteLLM (:4000) → ragpipe (:8090) → model (:8080)
                                   |
                           parse citations → validate → classify → audit
 
-rag-watcher (polls Drive, git, web → extract → chunk → embed)
+ragstuffer (polls Drive, git, web → extract → chunk → embed)
       |                    |
   docstore (Postgres)   Qdrant (reference payloads only)
 ```
@@ -60,7 +60,7 @@ rag-watcher (polls Drive, git, web → extract → chunk → embed)
 ```
 ./llm-stack.sh up/down/restart/status/test
 ./llm-stack.sh logs <model|proxy|webui>
-journalctl --user -u rag-watcher -f
+journalctl --user -u ragstuffer -f
 journalctl --user -u ragpipe -f
 journalctl --user -u qdrant -f
 ```
@@ -83,7 +83,7 @@ ragpipe is an external project (github.com/aclater/ragpipe). See its README for 
 
 ## Container images
 - ragpipe: ghcr.io/aclater/ragpipe (UBI9/python-311, deps + ONNX models baked in)
-- rag-watcher: localhost/rag-watcher (built from ubi10, deps + models baked in)
+- ragstuffer: localhost/ragstuffer (built from ubi10, deps + models baked in)
 - postgres: sclorg/postgresql-16-c9s (LiteLLM state + document store)
 - qdrant, litellm, ramalama, open-webui: upstream images
 
@@ -94,13 +94,12 @@ ragpipe is an external project (github.com/aclater/ragpipe). See its README for 
 - [ADRs](docs/adr/) — architecture decision records
 
 ## CI / code quality
-- **Ruff** (`ruff.toml`) — Python linter + formatter for `rag-watcher/` (ragpipe has its own repo)
-- **ShellCheck** (`.shellcheckrc`) — shell linter for `llm-stack.sh`, `tests/run-tests.sh`, `rag-watcher/setup.sh`
-- **Hadolint** (`.hadolint.yaml`) — Containerfile linter
+- **Ruff** (`ruff.toml`) — Python linter + formatter
+- **ShellCheck** (`.shellcheckrc`) — shell linter for `llm-stack.sh`, `tests/run-tests.sh`
 - **yamllint** — YAML lint for `configs/`
-- **pip-audit** — dependency vulnerability scanning
-- **pytest** — unit tests in `rag-watcher/test_*.py` (ragpipe tests in its own repo)
-- Run `ruff check && ruff format --check` before committing Python changes
+- Python tests, Containerfile lint, and security scans run in the component repos:
+  - [ragpipe](https://github.com/aclater/ragpipe) — RAG query proxy
+  - [ragstuffer](https://github.com/aclater/ragstuffer) — document ingestion
 - Run `bash tests/run-tests.sh` before committing shell/quadlet/config changes
 
 ## Security notes

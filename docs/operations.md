@@ -17,7 +17,7 @@ All services run as rootless Podman containers under systemd user units.
 systemctl --user start ramalama
 systemctl --user stop ragpipe
 systemctl --user restart qdrant
-systemctl --user restart rag-watcher
+systemctl --user restart ragstuffer
 ```
 
 ### Viewing logs
@@ -30,7 +30,7 @@ systemctl --user restart rag-watcher
 
 # RAG pipeline
 journalctl --user -u ragpipe -f
-journalctl --user -u rag-watcher -f
+journalctl --user -u ragstuffer -f
 journalctl --user -u qdrant -f
 
 # Audit log (grounding decisions, no text content)
@@ -43,10 +43,10 @@ journalctl --user -u ragpipe -f | grep '"grounding"'
 postgres
   ├── litellm (state store)
   ├── ragpipe (document store)
-  └── rag-watcher (document store)
+  └── ragstuffer (document store)
 qdrant
   ├── ragpipe (vector search)
-  └── rag-watcher (vector upsert)
+  └── ragstuffer (vector upsert)
 ramalama
   └── ragpipe (model inference)
 ```
@@ -58,9 +58,9 @@ ramalama
 1. Set `GDRIVE_FOLDER_ID` in `~/.config/llm-stack/env`
 2. Place the service account key at `~/.config/ramalama/gdrive-sa.json`
 3. Share the Drive folder with the service account email (Viewer access)
-4. Restart the watcher: `systemctl --user restart rag-watcher`
+4. Restart the watcher: `systemctl --user restart ragstuffer`
 
-See `rag-watcher/setup.sh` for interactive setup.
+See `ragstuffer/setup.sh` for interactive setup.
 
 ### Git repositories
 
@@ -88,7 +88,7 @@ Delete the state file and restart:
 
 ```bash
 rm ~/.local/share/ramalama/rag-state.json
-systemctl --user restart rag-watcher
+systemctl --user restart ragstuffer
 ```
 
 This triggers a full re-download and re-embed of all documents.
@@ -173,7 +173,7 @@ If the model is still loading, wait — Qwen3.5-35B-A3B takes ~15 seconds to loa
 2. Check if the docstore has chunks: `podman exec postgres psql -U litellm -c "SELECT COUNT(*) FROM chunks;"`
 3. Check proxy logs for errors: `journalctl --user -u ragpipe --since "5 min ago"`
 
-If Qdrant is empty, the watcher hasn't run yet. Force it: `systemctl --user restart rag-watcher`
+If Qdrant is empty, the watcher hasn't run yet. Force it: `systemctl --user restart ragstuffer`
 
 ### Reranker model choice and latency
 
@@ -224,7 +224,7 @@ ruff check --fix && ruff format  # auto-fix everything
 
 ```bash
 # ragpipe tests: cd ~/git/ragpipe && python -m pytest -v
-cd rag-watcher && python -m pytest -v  # 11 tests — extraction, point IDs, state
+cd ragstuffer && python -m pytest -v  # 11 tests — extraction, point IDs, state
 bash tests/run-tests.sh                # 86 tests — script, quadlets, configs, URLs
 ```
 
@@ -233,7 +233,7 @@ bash tests/run-tests.sh                # 86 tests — script, quadlets, configs,
 GitHub Actions run on every push to `main` and on pull requests:
 
 - **CI** (`.github/workflows/ci.yml`) — Ruff lint/format, ShellCheck, yamllint, pytest (both components), shell tests
-- **Containerfile lint** (`.github/workflows/container.yml`) — Hadolint on `rag-watcher/Containerfile` (ragpipe Containerfile linted in its own repo)
+- **Containerfile lint** (`.github/workflows/container.yml`) — Hadolint on `ragstuffer/Containerfile` (ragpipe Containerfile linted in its own repo)
 - **Security scan** (`.github/workflows/security.yml`) — pip-audit against both `requirements.txt` files, runs on PRs and weekly (Monday 08:00 UTC)
 
 ## Configuration reference

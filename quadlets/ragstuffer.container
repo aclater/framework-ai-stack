@@ -1,19 +1,20 @@
-# ~/.config/containers/systemd/rag-watcher.container
-# Google Drive RAG watcher — polls a Drive folder and ingests documents into Qdrant
-# Managed by: systemctl --user [start|stop|restart|status] rag-watcher
+# ~/.config/containers/systemd/ragstuffer.container
+# ragstuffer — polls document sources and ingests into Qdrant + Postgres
+# Source: https://github.com/aclater/ragstuffer
+# Managed by: systemctl --user [start|stop|restart|status] ragstuffer
 
 [Unit]
-Description=Google Drive RAG watcher
+Description=ragstuffer (document ingestion for RAG)
 After=local-fs.target network-online.target qdrant.service ragpipe.service
 Wants=network-online.target
 Requires=qdrant.service ragpipe.service
 
 [Container]
-# Pre-built image with deps + models baked in (see rag-watcher/Containerfile)
-# Build: podman build -t localhost/rag-watcher rag-watcher/
-Image=localhost/rag-watcher:latest
+# Built from github.com/aclater/ragstuffer
+# Build: podman build -t localhost/ragstuffer ~/git/ragstuffer/
+Image=localhost/ragstuffer:latest
 
-Volume=%h/git/framework-ai-stack/rag-watcher:/app:ro,z
+Volume=%h/git/ragstuffer:/app:ro,z
 Volume=%h/git/ragpipe/ragpipe/docstore.py:/app/docstore.py:ro,z
 Volume=%h/.config/ramalama/gdrive-sa.json:/run/secrets/gdrive-sa.json:ro,z
 Volume=rag-staging:/staging:Z
@@ -29,9 +30,9 @@ Environment=DOCSTORE_URL=postgresql://litellm:litellm@host.containers.internal:5
 
 Network=host
 
-Exec=python3.12 /app/rag-watcher.py
+Exec=python3.12 /app/ragstuffer.py
 
-ContainerName=rag-watcher
+ContainerName=ragstuffer
 
 [Service]
 Restart=on-failure

@@ -74,9 +74,9 @@
 <text class="th c-purple-text" x="210" y="128" text-anchor="middle" dominant-baseline="central">LiteLLM proxy</text>
 <text class="ts c-purple-text" x="210" y="146" text-anchor="middle" dominant-baseline="central">default · reasoning · code · fast → :8090</text>
 
-<!-- RAG watcher -->
+<!-- ragstuffer -->
 <rect x="420" y="108" width="340" height="52" rx="8" stroke-width="0.5" class="c-sand-fill"/>
-<text class="th c-sand-text" x="590" y="128" text-anchor="middle" dominant-baseline="central">RAG watcher</text>
+<text class="th c-sand-text" x="590" y="128" text-anchor="middle" dominant-baseline="central">ragstuffer</text>
 <text class="ts c-sand-text" x="590" y="146" text-anchor="middle" dominant-baseline="central">extract · chunk · embed · persist</text>
 
 <!-- Arrow LiteLLM → ragpipe -->

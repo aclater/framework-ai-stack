@@ -1,5 +1,8 @@
 name: Containerfile lint
 
+# Both ragpipe and ragstuffer Containerfiles are linted in their own repos.
+# This workflow is retained as a placeholder for any future local Containerfiles.
+
 on:
   push:
     branches: [main]
@@ -13,12 +16,8 @@ permissions:
   contents: read
 
 jobs:
-  hadolint:
-    name: Hadolint
+  placeholder:
+    name: No local Containerfiles
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      # ragpipe Containerfile is in github.com/aclater/ragpipe — linted there
-      - uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: rag-watcher/Containerfile
+      - run: echo "ragpipe and ragstuffer Containerfiles linted in their own repos"

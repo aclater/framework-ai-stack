@@ -1,11 +1,11 @@
-# Ruff — linter + formatter for rag-watcher Python code
-# ragpipe has its own ruff config at github.com/aclater/ragpipe
+# Ruff — linter + formatter for any local Python code
+# ragpipe and ragstuffer have their own ruff configs in their repos
 # https://docs.astral.sh/ruff/
 
 target-version = "py311"
 
 # Only lint project code, not vendored deps or venvs
-include = ["rag-watcher/*.py"]
+include = ["**/*.py"]
 
 line-length = 120
 
@@ -25,7 +25,7 @@ select = [
 ignore = [
     "S101",  # assert in tests is fine
     "S108",  # /tmp paths are env-overridable defaults in containerized code
-    "S603",  # subprocess calls are intentional in rag-watcher
+    "S603",  # subprocess calls are intentional in ragstuffer
     "S607",  # partial executable path (git) is acceptable here
     "S608",  # parameterized SQL with dynamic placeholders, not string injection
     "S104",  # binding 0.0.0.0 is intentional — runs inside containers

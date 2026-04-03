@@ -14,7 +14,7 @@ Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB
 | ragpipe | ghcr.io/aclater/ragpipe (UBI9/python-311) | 8090 | Search → hydrate → rerank → ground → cite → inject |
 | litellm | `ghcr.io/berriai/litellm:main-stable` | 4000 | OpenAI-compatible proxy |
 | open-webui | `ghcr.io/open-webui/open-webui:v0.8.6` | 3000 | Chat UI, pinned to v0.8.6 |
-| rag-watcher | `localhost/rag-watcher` (built from ubi10) | — | Ingests from Drive, git repos, and web URLs into docstore + Qdrant |
+| ragstuffer | `localhost/ragstuffer` (built from ubi10) | — | Ingests from Drive, git repos, and web URLs into docstore + Qdrant |
 
 Models are pulled and managed by [RamaLama](https://github.com/containers/ramalama). LiteLLM routes all aliases through the ragpipe. The proxy searches Qdrant for candidate vectors (reference payloads only — no text stored in Qdrant), hydrates chunk text from the Postgres document store, reranks with cross-encoder/ms-marco-MiniLM-L-6-v2, and injects the top results as context before forwarding to the model. Documents from Google Drive, git repos, and web URLs are automatically ingested — no model restart required.
 
@@ -37,12 +37,12 @@ chmod +x llm-stack.sh
 ./llm-stack.sh setup         # verify GPU, auto-tune, write configs
 ./llm-stack.sh pull-image    # pull the RamaLama ROCm container image
 ./llm-stack.sh pull-models   # download model (size depends on tune)
-./llm-stack.sh build         # build ragpipe (from ~/git/ragpipe) and rag-watcher images
+./llm-stack.sh build         # build ragpipe (from ~/git/ragpipe) and ragstuffer images
 ./llm-stack.sh install       # install quadlets to systemd + fix SELinux labels
 ./llm-stack.sh up            # start everything
 
 # Optional: set up the Google Drive RAG watcher
-./rag-watcher/setup.sh       # interactive setup for Drive polling
+./ragstuffer/setup.sh       # interactive setup for Drive polling
 ```
 
 ## Usage
@@ -99,7 +99,7 @@ Run locally:
 ```bash
 ruff check && ruff format --check   # Python lint + format
 # ragpipe tests: cd ~/git/ragpipe && python -m pytest -v
-cd rag-watcher && python -m pytest -v # rag-watcher tests (11)
+cd ragstuffer && python -m pytest -v # ragstuffer tests (11)
 bash tests/run-tests.sh             # shell tests (86)
 ```
 

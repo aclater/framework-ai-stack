@@ -29,7 +29,6 @@ jobs:
       - uses: ludeeus/action-shellcheck@2.0.0
         with:
           scandir: .
-          ignore: "./rag-watcher/.venv"
 
   lint-yaml:
     name: yamllint
@@ -39,27 +38,9 @@ jobs:
       - run: pip install --quiet yamllint
       - run: yamllint -d relaxed configs/
 
-  test-python:
-    name: pytest
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        # ragpipe tests are in github.com/aclater/ragpipe
-        component: [rag-watcher]
-    defaults:
-      run:
-        working-directory: ${{ matrix.component }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Install dependencies
-        run: |
-          pip install --quiet -r requirements.txt
-          pip install --quiet pytest
-      - name: Run tests
-        run: python -m pytest -v
+  # Python tests for ragpipe and ragstuffer run in their own repos:
+  # - github.com/aclater/ragpipe
+  # - github.com/aclater/ragstuffer
 
   test-shell:
     name: Shell tests

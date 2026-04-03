@@ -16,12 +16,12 @@ SELinux is enforcing on Fedora 43. Three containers fail to start without `Secur
 
 ## Decision
 
-Set `SecurityLabelDisable=true` only on these three containers, each with an explicit comment in the quadlet explaining the specific constraint. All other containers (ragpipe, rag-watcher, postgres) run with full SELinux enforcement.
+Set `SecurityLabelDisable=true` only on these three containers, each with an explicit comment in the quadlet explaining the specific constraint. All other containers (ragpipe, ragstuffer, postgres) run with full SELinux enforcement.
 
 ## Consequences
 
 - Reduced SELinux confinement on three containers — accepted as unavoidable given upstream image constraints
 - Every `SecurityLabelDisable=true` has a comment citing the specific reason, making it auditable
-- UBI-based containers (ragpipe on UBI9, rag-watcher on UBI10, postgres on sclorg) do not need the workaround
+- UBI-based containers (ragpipe on UBI9, ragstuffer on UBI10, postgres on sclorg) do not need the workaround
 - The Debian binary issue affects any non-RHEL/Fedora container image — this will recur with other upstream images
 - Must revisit when: (a) upstream ramalama provides an SELinux policy for `/dev/kfd`, (b) qdrant/litellm ship RHEL-compatible images, or (c) Fedora relaxes `execmem` policy for containers

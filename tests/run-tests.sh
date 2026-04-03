@@ -325,7 +325,9 @@ section "8. Model URLs in script"
 
 SCRIPT_CONTENT=$(cat "$SCRIPT")
 
-assert_contains     "Qwen3.5 URL present"            "unsloth/Qwen3.5-35B-A3B-GGUF/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf" "$SCRIPT_CONTENT"
+# Model URLs are now dynamic (selected by tuner), check that both families are referenced
+assert_contains     "Qwen3.5-35B model family"       "Qwen3.5-35B-A3B-GGUF" "$SCRIPT_CONTENT"
+assert_contains     "Qwen3.5-9B model family"        "Qwen3.5-9B-GGUF" "$SCRIPT_CONTENT"
 assert_not_contains "QwQ-32B URL removed"             "QwQ-32B-GGUF"                    "$SCRIPT_CONTENT"
 assert_not_contains "Qwen-Coder-32B URL removed"      "Qwen2.5-Coder-32B"               "$SCRIPT_CONTENT"
 assert_not_contains "Qwen2.5-14B URL removed"         "Qwen2.5-14B"                     "$SCRIPT_CONTENT"
