@@ -13,8 +13,9 @@ Image=ghcr.io/berriai/litellm:main-stable
 Volume=%h/.config/llm-stack/litellm-config.yaml:/app/config.yaml:ro,Z
 
 EnvironmentFile=%h/.config/llm-stack/env
+# Postgres credentials sourced from ragstack.env (overrides DATABASE_URL in env)
+EnvironmentFile=%h/.config/llm-stack/ragstack.env
 
-Environment=DATABASE_URL=postgresql://litellm:litellm@localhost:5432/litellm
 Environment=STORE_MODEL_IN_DB=True
 
 Network=host

@@ -32,6 +32,11 @@ git clone https://github.com/aclater/framework-ai-stack
 cd framework-ai-stack
 chmod +x llm-stack.sh
 
+# Configure credentials — copy the example and fill in real values
+mkdir -p ~/.config/llm-stack
+cp ragstack.env.example ~/.config/llm-stack/ragstack.env
+# Edit ragstack.env with real passwords and tokens before starting services
+
 ./llm-stack.sh deps          # install system packages (sudo)
 ./llm-stack.sh groups        # add user to render/video (sudo + reboot)
 ./llm-stack.sh setup         # verify GPU, auto-tune, write configs
