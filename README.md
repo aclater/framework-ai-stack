@@ -1,6 +1,6 @@
 # framework-ai-stack
 
-Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB unified memory). Qwen3.5-35B-A3B inference with live RAG — a watcher automatically imports documents from Google Drive, git repos, and web URLs into a Qdrant vector database backed by a Postgres document store. A ragpipe searches Qdrant, hydrates chunks from the document store, reranks with a cross-encoder, and injects the most relevant context into every query. All services run as rootless Podman containers managed by systemd quadlets.
+Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB unified memory). Qwen3.5-35B-A3B inference with live RAG — ragstuffer automatically imports documents from Google Drive, git repos, and web URLs into a Qdrant vector database backed by a Postgres document store. A ragpipe searches Qdrant, hydrates chunks from the document store, reranks with a cross-encoder, and injects the most relevant context into every query. All services run as rootless Podman containers managed by systemd quadlets.
 
 ![Architecture](architecture.svg)
 
@@ -41,7 +41,7 @@ chmod +x llm-stack.sh
 ./llm-stack.sh install       # install quadlets to systemd + fix SELinux labels
 ./llm-stack.sh up            # start everything
 
-# Optional: set up the Google Drive RAG watcher
+# Optional: set up ragstuffer for Google Drive polling
 ./ragstuffer/setup.sh       # interactive setup for Drive polling
 ```
 

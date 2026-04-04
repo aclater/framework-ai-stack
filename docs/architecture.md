@@ -38,7 +38,7 @@ AMD Ryzen AI Max+ 395 (ROCm, gfx1151)
 Document sources (Google Drive, git repos, web URLs)
   │
   ▼
-RAG watcher (polls every 15 minutes)
+ragstuffer (polls every 15 minutes)
   │  1. Download new/modified documents
   │  2. Extract text (PDF, DOCX, PPTX, XLSX, HTML, Markdown)
   │  3. Chunk with RecursiveCharacterTextSplitter
@@ -87,7 +87,7 @@ Serves the Qwen3.5-35B-A3B model via llama-server. The model uses Mixture of Exp
 
 **Image:** `quay.io/ramalama/rocm:latest`
 
-### RAG watcher
+### ragstuffer
 
 Polls document sources on a configurable interval (default 15 minutes). Supports three source types:
 

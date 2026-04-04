@@ -254,7 +254,7 @@ See [ragpipe documentation](https://github.com/aclater/ragpipe) for the full con
 | `DOCSTORE_BACKEND` | `postgres` | `postgres` or `sqlite` |
 | `DOCSTORE_URL` | `postgresql://litellm:litellm@.../litellm` | Postgres connection string |
 
-### RAG watcher
+### ragstuffer
 
 | Variable | Default | Description |
 |----------|---------|-------------|
