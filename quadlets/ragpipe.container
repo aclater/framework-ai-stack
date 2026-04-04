@@ -44,6 +44,14 @@ Environment=DOCSTORE_URL=postgresql://litellm:litellm@host.containers.internal:5
 # Model cache location (inside the writable volume)
 Environment=RAGPIPE_MODEL_CACHE=/home/default/.cache/ragpipe
 
+# AMD ROCm GPU access for ONNX Runtime inference (gfx1151)
+AddDevice=/dev/kfd
+AddDevice=/dev/dri
+Environment=HSA_OVERRIDE_GFX_VERSION=11.5.1
+# SELinux cannot label /dev/kfd — required for ROCm device access
+# Upstream: https://github.com/ROCm/ROCm/issues/2983
+SecurityLabelDisable=true
+
 Network=host
 
 ContainerName=ragpipe
