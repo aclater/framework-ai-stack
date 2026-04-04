@@ -63,7 +63,7 @@ Network=host
 ContainerName=ragpipe
 
 # Health check
-HealthCmd=python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health')"
+HealthCmd=curl -sf http://127.0.0.1:8090/health
 HealthInterval=30s
 HealthTimeout=10s
 HealthRetries=3
