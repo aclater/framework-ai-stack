@@ -82,8 +82,11 @@ Configured via environment variables in `~/.config/llm-stack/env`:
 ragpipe is an external project (github.com/aclater/ragpipe). See its README for the full config reference. Key overrides in the quadlet: `RAG_TOP_K=40`, `RERANKER_TOP_N=15`.
 
 ## Container images
-- ragpipe: ghcr.io/aclater/ragpipe (UBI9/python-311, deps + ONNX models baked in)
-- ragstuffer: localhost/ragstuffer (built from ubi10, deps + models baked in)
+- ragpipe: ghcr.io/aclater/ragpipe (UBI9/python-311, ONNX models baked in)
+- ragstuffer: localhost/ragstuffer — GPU-aware, auto-selected by `llm-stack.sh build`:
+  - CPU: UBI10 (default, delegates embedding to ragpipe)
+  - ROCm: rocm/pytorch (AMD GPU embedding via sentence-transformers)
+  - CUDA: pytorch/pytorch (NVIDIA GPU embedding via sentence-transformers)
 - postgres: sclorg/postgresql-16-c9s (LiteLLM state + document store)
 - qdrant, litellm, ramalama, open-webui: upstream images
 

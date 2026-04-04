@@ -140,7 +140,9 @@ Chat interface. Connects to LiteLLM as its OpenAI backend, so all queries automa
 | Container | Base image | SELinux | Reason |
 |-----------|-----------|---------|--------|
 | ragpipe | `ghcr.io/aclater/ragpipe` (UBI9/python-311) | Enforcing | Pre-built with deps + models |
-| ragstuffer | `localhost/ragstuffer` (from ubi10) | Enforcing | Pre-built with deps + models |
+| ragstuffer (CPU) | `localhost/ragstuffer` (from ubi10) | Enforcing | CPU-only poller, delegates embedding to ragpipe |
+| ragstuffer (ROCm) | `localhost/ragstuffer` (from rocm/pytorch) | Disabled | GPU embedding for AMD (auto-selected by `llm-stack.sh build`) |
+| ragstuffer (CUDA) | `localhost/ragstuffer` (from pytorch/pytorch) | Disabled | GPU embedding for NVIDIA (auto-selected by `llm-stack.sh build`) |
 | postgres | `sclorg/postgresql-16-c9s` | Enforcing | Red Hat ecosystem |
 | qdrant | `qdrant/qdrant` | Disabled | Debian binary triggers SELinux execmem denial on Fedora 43 |
 | litellm | `litellm:main-stable` | Disabled | Debian binary triggers SELinux execmem denial on Fedora 43 |

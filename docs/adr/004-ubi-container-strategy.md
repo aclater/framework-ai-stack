@@ -21,7 +21,7 @@ Use UBI (Universal Base Image) containers wherever possible, with SELinux enforc
 | Container | Image | SELinux | Rationale |
 |-----------|-------|---------|-----------|
 | ragpipe | `ghcr.io/aclater/ragpipe` (UBI9/python-311) | Enforcing | Pre-built with deps + models baked in |
-| ragstuffer | `localhost/ragstuffer` (from ubi10) | Enforcing | Pre-built with deps + models baked in |
+| ragstuffer (CPU) | `localhost/ragstuffer` (from ubi10) | Enforcing | CPU-only polling, delegates embedding to ragpipe |
 | postgres | `sclorg/postgresql-16-c9s` | Enforcing | Red Hat-maintained Postgres |
 
 `SecurityLabelDisable=true` is only used where technically unavoidable:
@@ -31,8 +31,12 @@ Use UBI (Universal Base Image) containers wherever possible, with SELinux enforc
 | qdrant | Debian binary triggers `execmem` SELinux denial on Fedora 43 kernel |
 | litellm | Same Debian binary issue |
 | ramalama | Requires `/dev/kfd` access for ROCm GPU compute |
+| ragstuffer (ROCm) | `rocm/pytorch` — upstream AMD; no UBI equivalent with ROCm + PyTorch |
+| ragstuffer (CUDA) | `pytorch/pytorch` — upstream NVIDIA; no UBI equivalent with CUDA + PyTorch |
 
-Each exception has a comment in the quadlet file explaining the specific constraint.
+Each exception has a comment in the quadlet or Containerfile explaining the specific constraint.
+
+**GPU ragstuffer variants:** The GPU Containerfiles (`Containerfile.rocm`, `Containerfile.cuda`) use upstream vendor images because Red Hat does not publish UBI images with PyTorch + GPU acceleration pre-built. The CPU-only default (`Containerfile`) remains UBI10. `llm-stack.sh build` auto-selects the appropriate variant based on detected GPU.
 
 ## Consequences
 
