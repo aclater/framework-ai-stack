@@ -28,6 +28,11 @@ Environment=EMBED_URL=http://host.containers.internal:8090/v1/embeddings
 Environment=DOCSTORE_BACKEND=postgres
 Environment=DOCSTORE_URL=postgresql://litellm:litellm@host.containers.internal:5432/litellm
 
+# Admin API for triggering ingestion (POST /admin/ingest-now, /admin/ingest-full)
+Environment=RAGSTUFFER_ADMIN_PORT=8091
+# Set a real token in ~/.config/llm-stack/env — this is a placeholder
+Environment=RAGSTUFFER_ADMIN_TOKEN=change-me
+
 Network=host
 
 Exec=python3.12 /app/ragstuffer.py
