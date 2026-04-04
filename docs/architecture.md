@@ -43,7 +43,7 @@ ragstuffer (polls every 15 minutes)
   │  2. Extract text (PDF, DOCX, PPTX, XLSX, HTML, Markdown)
   │  3. Chunk with RecursiveCharacterTextSplitter
   │  4. Persist chunks to document store (Postgres)
-  │  5. Embed with bge-base-en-v1.5 (GPU auto-detect or ragpipe CPU)
+  │  5. Embed with gte-modernbert-base (GPU auto-detect or ragpipe CPU)
   │  6. Upsert reference-only payloads to Qdrant
   ▼
 Qdrant (vectors) + Postgres (chunk text)
