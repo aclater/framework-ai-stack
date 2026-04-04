@@ -10,11 +10,11 @@ Wants=network-online.target
 Requires=qdrant.service postgres.service
 
 [Container]
-# Published image from ghcr.io — ONNX models + semantic router baked in
-# RSS ~708 MB (raw ONNX Runtime, no fastembed/PyTorch)
-Image=ghcr.io/aclater/ragpipe:main
+# ROCm variant: rocm/dev-ubuntu-24.04:7.2.1 + onnxruntime-migraphx (ADR-004 exception)
+# ONNX models baked in at /opt/ragpipe/models
+Image=ghcr.io/aclater/ragpipe:main-rocm
 
-# Writable model cache for ONNX models (persists across restarts)
+# Writable cache for MIGraphX JIT-compiled kernels (persists across restarts)
 Volume=ragpipe-model-cache:/home/default/.cache/ragpipe:Z
 
 # Routes config (local file, not in repo)
@@ -41,9 +41,6 @@ Environment=RERANKER_TOP_N=15
 
 # Document store — asyncpg connection pool for hydration, LRU chunk cache
 Environment=DOCSTORE_BACKEND=postgres
-
-# Model cache location (inside the writable volume)
-Environment=RAGPIPE_MODEL_CACHE=/home/default/.cache/ragpipe
 
 # AMD ROCm GPU access for ONNX Runtime inference (gfx1151)
 # Force MIGraphXExecutionProvider — ROCMExecutionProvider segfaults on gfx1151
@@ -77,8 +74,8 @@ Restart=on-failure
 RestartSec=10s
 TimeoutStartSec=300s
 
-# Resource limits — ragpipe uses ~708 MB RSS with ONNX Runtime
-MemoryMax=2G
+# Resource limits — MIGraphX graph compilation peaks higher than CPU-only ONNX
+MemoryMax=4G
 CPUQuota=200%
 
 [Install]
