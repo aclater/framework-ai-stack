@@ -8,7 +8,8 @@ After=local-fs.target network-online.target
 Wants=network-online.target
 
 [Container]
-Image=quay.io/ramalama/rocm:latest
+# Pinned 2026-04-04 — update: skopeo inspect docker://quay.io/ramalama/rocm:latest
+Image=quay.io/ramalama/rocm:0.18.0
 
 # GPU passthrough — /dev/kfd (compute) + /dev/dri (render)
 AddDevice=-/dev/kfd
@@ -39,6 +40,12 @@ Exec=llama-server --model /mnt/models/model.file --host 0.0.0.0 --port 8080 \
 
 ContainerName=ramalama
 PublishPort=8080:8080
+
+HealthCmd=curl -sf http://127.0.0.1:8080/health
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=120s
 
 [Service]
 Restart=on-failure

@@ -10,9 +10,10 @@ Wants=network-online.target
 Requires=qdrant.service ragpipe.service
 
 [Container]
-# Built from github.com/aclater/ragstuffer
-# Build: podman build -t localhost/ragstuffer ~/git/ragstuffer/
-Image=localhost/ragstuffer:latest
+# Locally built — tag with git SHA at build time:
+#   podman build -t localhost/ragstuffer:$(git rev-parse --short HEAD) .
+#   podman tag localhost/ragstuffer:$(git rev-parse --short HEAD) localhost/ragstuffer:main
+Image=localhost/ragstuffer:main
 
 Volume=%h/git/ragstuffer:/app:ro,z
 Volume=%h/git/ragpipe/ragpipe/docstore.py:/app/docstore.py:ro,z
@@ -39,6 +40,12 @@ Network=host
 Exec=python3.12 /app/ragstuffer.py
 
 ContainerName=ragstuffer
+
+HealthCmd=curl -sf http://127.0.0.1:8091/health
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=60s
 
 [Service]
 Restart=on-failure
