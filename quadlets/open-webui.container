@@ -1,5 +1,5 @@
 # ~/.config/containers/systemd/open-webui.container
-# Open WebUI — pinned to v0.8.6 (stable, March 2026)
+# Open WebUI — pinned to v0.8.12 (stable, April 2026)
 
 [Unit]
 Description=Open WebUI
@@ -7,7 +7,7 @@ After=local-fs.target network-online.target
 Wants=network-online.target
 
 [Container]
-Image=ghcr.io/open-webui/open-webui:v0.8.6
+Image=ghcr.io/open-webui/open-webui:v0.8.12
 
 Volume=open-webui-data.volume:/app/backend/data:Z
 

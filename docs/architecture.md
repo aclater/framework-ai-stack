@@ -104,7 +104,7 @@ After extraction and chunking, persists to the document store first (ensuring th
 
 Chat interface. Connects to LiteLLM as its OpenAI backend, so all queries automatically flow through the RAG pipeline.
 
-**Image:** `ghcr.io/open-webui/open-webui:v0.8.6`
+**Image:** `ghcr.io/open-webui/open-webui:v0.8.12`
 
 ## Port map
 
@@ -147,4 +147,4 @@ Chat interface. Connects to LiteLLM as its OpenAI backend, so all queries automa
 | qdrant | `qdrant/qdrant` | Disabled | Debian binary triggers SELinux execmem denial on Fedora 43 |
 | litellm | `litellm:main-stable` | Disabled | Debian binary triggers SELinux execmem denial on Fedora 43 |
 | ramalama | `ramalama/rocm:latest` | Disabled | Requires `/dev/kfd` access for ROCm GPU compute |
-| open-webui | `open-webui:v0.8.6` | — | Upstream image |
+| open-webui | `open-webui:v0.8.12` | — | Upstream image |

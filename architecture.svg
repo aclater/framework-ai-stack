@@ -144,7 +144,7 @@
 <!-- Bottom row -->
 <rect x="30"  y="574" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
 <text class="th c-gray-text" x="115" y="595" text-anchor="middle" dominant-baseline="central">Open WebUI</text>
-<text class="ts c-gray-text" x="115" y="614" text-anchor="middle" dominant-baseline="central">v0.8.6 · :3000</text>
+<text class="ts c-gray-text" x="115" y="614" text-anchor="middle" dominant-baseline="central">v0.8.12 · :3000</text>
 
 <rect x="215" y="574" width="170" height="54" rx="8" stroke-width="0.5" class="c-gray-fill"/>
 <text class="th c-gray-text" x="300" y="595" text-anchor="middle" dominant-baseline="central">UBI9 · UBI10</text>
