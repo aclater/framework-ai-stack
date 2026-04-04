@@ -688,12 +688,27 @@ cmd_build() {
         || fail "ragpipe pull failed"
 
     log "Building ragstuffer image..."
-    podman build -t localhost/ragstuffer:latest "$SCRIPT_DIR/ragstuffer/" \
-        && ok "localhost/ragstuffer:latest" \
+    local ragstuffer_dir="$HOME/git/ragstuffer"
+    if [[ ! -d "$ragstuffer_dir" ]]; then
+        fail "ragstuffer not found at $ragstuffer_dir — clone https://github.com/aclater/ragstuffer"
+    fi
+
+    # Select GPU-appropriate Containerfile
+    local containerfile="Containerfile"
+    if [[ "$GPU_VENDOR" == "nvidia" ]] && [[ -f "$ragstuffer_dir/Containerfile.cuda" ]]; then
+        containerfile="Containerfile.cuda"
+        log "Using CUDA Containerfile (NVIDIA GPU detected)"
+    elif [[ "$GPU_VENDOR" == "rocm" ]] && [[ -f "$ragstuffer_dir/Containerfile.rocm" ]]; then
+        containerfile="Containerfile.rocm"
+        log "Using ROCm Containerfile (AMD GPU detected)"
+    fi
+
+    podman build -t localhost/ragstuffer:latest -f "$ragstuffer_dir/$containerfile" "$ragstuffer_dir/" \
+        && ok "localhost/ragstuffer:latest ($containerfile)" \
         || fail "ragstuffer build failed"
 
     header "Images built"
-    podman images --filter reference='localhost/rag-*' --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.Created}}"
+    podman images --filter reference='localhost/*' --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.Created}}"
 }
 
 
