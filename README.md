@@ -9,7 +9,7 @@ Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB
 | Service | Image | Port | Notes |
 |---|---|---|---|
 | postgres | `quay.io/sclorg/postgresql-16-c9s` | 5432 | LiteLLM state + document store |
-| qdrant | `docker.io/qdrant/qdrant` | 6333 | Vector search (int8 scalar quantization) |
+| qdrant | `docker.io/qdrant/qdrant:v1.17.1` | 6333 | Vector search (int8 scalar quantization) |
 | ramalama | `quay.io/ramalama/rocm:latest` | 8080 | Qwen3.5 (model + quant selected by auto-tuner) |
 | ragpipe | ghcr.io/aclater/ragpipe (UBI9/python-311) | 8090 | Search → hydrate → rerank → ground → cite → inject |
 | litellm | `ghcr.io/berriai/litellm:main-stable` | 4000 | OpenAI-compatible proxy |
