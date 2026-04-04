@@ -6,7 +6,8 @@ Description=PostgreSQL for LiteLLM
 After=local-fs.target
 
 [Container]
-Image=quay.io/sclorg/postgresql-16-c9s:latest
+# No semver tags available — pinned by digest (c9s stream, 2026-04-01)
+Image=quay.io/sclorg/postgresql-16-c9s@sha256:83dabb08e60b1896a8b97c0a56eabcbdc8ba4e91c70765639ea90e5e1f1a0db1
 
 # sclorg postgres data directory (not /var/lib/postgresql/data)
 Volume=litellm-db-data.volume:/var/lib/pgsql/data:Z
