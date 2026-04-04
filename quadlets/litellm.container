@@ -26,6 +26,13 @@ Exec=--config /app/config.yaml --port 4000
 
 ContainerName=litellm
 
+# No curl in the Debian-minimal image — use python3 (single-quoted to avoid quadlet escaping)
+HealthCmd=python3 -c 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:4000/health/readiness")'
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=60s
+
 [Service]
 Restart=on-failure
 RestartSec=15s

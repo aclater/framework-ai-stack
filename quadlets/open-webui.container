@@ -24,6 +24,13 @@ Network=host
 
 ContainerName=open-webui
 
+# curl blocked by SELinux (librtmp.so.1 memory protection) — use python3 (single-quoted)
+HealthCmd=python3 -c 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:3000/health")'
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=60s
+
 [Service]
 Restart=on-failure
 RestartSec=10s

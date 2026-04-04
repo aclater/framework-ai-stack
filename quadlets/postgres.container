@@ -19,6 +19,12 @@ Network=host
 
 ContainerName=postgres
 
+HealthCmd=pg_isready -U litellm
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=30s
+
 [Service]
 Restart=on-failure
 RestartSec=5s

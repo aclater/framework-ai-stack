@@ -17,6 +17,13 @@ SecurityLabelDisable=true
 PublishPort=6333:6333
 ContainerName=qdrant
 
+# No curl in the Debian-minimal image — use bash /dev/tcp
+HealthCmd=bash -c 'echo -e "GET /healthz HTTP/1.0\r\n" > /dev/tcp/127.0.0.1/6333'
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=30s
+
 [Service]
 Restart=on-failure
 RestartSec=10s
