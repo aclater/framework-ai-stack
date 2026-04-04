@@ -43,7 +43,7 @@ ragstuffer (polls every 15 minutes)
   │  2. Extract text (PDF, DOCX, PPTX, XLSX, HTML, Markdown)
   │  3. Chunk with RecursiveCharacterTextSplitter
   │  4. Persist chunks to document store (Postgres)
-  │  5. Embed with bge-base-en-v1.5 (ONNX Runtime, CPU-only)
+  │  5. Embed with bge-base-en-v1.5 (GPU auto-detect or ragpipe CPU)
   │  6. Upsert reference-only payloads to Qdrant
   ▼
 Qdrant (vectors) + Postgres (chunk text)
@@ -95,9 +95,10 @@ Polls document sources on a configurable interval (default 15 minutes). Supports
 - **Git repos** — shallow clones with incremental pull, glob-based file filtering
 - **Web URLs** — fetches and extracts text from HTML pages
 
-After extraction and chunking, persists to the document store first (ensuring the source of truth is written before vectors), then embeds and upserts reference payloads to Qdrant.
+After extraction and chunking, persists to the document store first (ensuring the source of truth is written before vectors), then embeds and upserts reference payloads to Qdrant. Embedding can run via ragpipe's CPU endpoint or directly on GPU via `ingest-remote.py` (auto-detects NVIDIA CUDA, AMD ROCm, Intel XPU).
 
-**Image:** `localhost/ragstuffer` (built from `ubi10`, deps + models baked in)
+**Source:** [github.com/aclater/ragstuffer](https://github.com/aclater/ragstuffer)
+**Image:** `localhost/ragstuffer` (built from `ubi10`)
 
 ### Open WebUI (:3000)
 
