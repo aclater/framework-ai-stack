@@ -1,4 +1,4 @@
-name: Dependency security scan
+name: Security scan
 
 on:
   pull_request:
@@ -8,15 +8,28 @@ on:
 
 permissions:
   contents: read
-
-# Python dependency security scans for ragpipe and ragstuffer
-# run in their own repos:
-# - github.com/aclater/ragpipe
-# - github.com/aclater/ragstuffer
+  security-events: write
 
 jobs:
-  placeholder:
-    name: No local Python dependencies
+  codeql:
+    name: CodeQL analysis
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["python"]
     steps:
-      - run: echo "Security scans for ragpipe and ragstuffer run in their own repos"
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
