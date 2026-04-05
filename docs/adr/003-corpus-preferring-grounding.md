@@ -19,7 +19,7 @@ Strict grounding is safe but frustrating — users expect a knowledgeable assist
 Implement corpus-preferring grounding with transparent fallback:
 
 - The model uses retrieved documents as its primary source and **cites every claim** with `[doc_id:chunk_id]`
-- When the corpus is silent, the model answers from general knowledge but **prefixes** with `⚠️ Not in corpus:` 
+- When the corpus is silent, the model answers from general knowledge but **prefixes** with `⚠️ Not in corpus:`
 - Mixed responses cite the corpus-sourced portion and prefix the general knowledge portion
 - Response metadata classifies the grounding mode (`corpus`, `general`, `mixed`) by **parsing the response**, not by asking the LLM
 
