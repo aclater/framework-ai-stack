@@ -44,6 +44,8 @@ _detect_gpu
 GPU_PROFILE="$GPU_VENDOR"
 if [[ "$GPU_VENDOR" == "rocm" && "$GPU_NAME" == "gfx1151" ]]; then
     GPU_PROFILE="gfx1151"
+    # gfx1151 uses llama-vulkan instead of ramalama (Vulkan RADV, not ROCm)
+    UNITS=("${UNITS[@]/ramalama/llama-vulkan}")
 fi
 HOST_DIR="$SCRIPT_DIR/hosts/$GPU_PROFILE"
 if [[ -d "$HOST_DIR" ]]; then
