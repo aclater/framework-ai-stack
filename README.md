@@ -211,6 +211,7 @@ bash tests/run-tests.sh             # shell tests
 | [004](docs/adr/004-ubi-container-strategy.md) | UBI container base images with SELinux enforcing |
 | [010](docs/adr/010-uma-memory-configuration.md) | Unified memory configuration — remove LLAMA\_HIP\_UMA=1 |
 | [011](docs/adr/011-selinux-securitylabeldisable-workaround.md) | SecurityLabelDisable=true as targeted workaround |
+| [014](docs/adr/014-vulkan-on-gfx1151.md) | Vulkan (RADV) over ROCm HIP on gfx1151 — proper device-local memory |
 
 **Model and proxy**
 

@@ -1,0 +1,69 @@
+# Build stage: Fedora 43 for compiler toolchain
+FROM registry.fedoraproject.org/fedora:43 AS build
+
+RUN dnf install -y --setopt=install_weak_deps=False \
+    cmake \
+    gcc \
+    gcc-c++ \
+    make \
+    git \
+    curl \
+    wget \
+    xz \
+    ninja-build \
+    vulkan-loader-devel \
+    spirv-tools \
+    glslc \
+    libstdc++-devel \
+    libatomic \
+    openssl-devel \
+    libcurl-devel \
+    && dnf clean all
+
+WORKDIR /build
+
+RUN git clone --depth 1 --branch b3575 https://github.com/ggml-org/llama.cpp.git
+
+WORKDIR /build/llama.cpp
+
+RUN cmake -B build \
+    -G Ninja \
+    -DGGML_VULKAN=ON \
+    -DGGML_RPC=ON \
+    -DLLAMA_CURL=ON \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DLLAMA_BUILD_SERVER=ON \
+    -DLLAMA_BUILD_TESTS=OFF \
+    && cmake --build build --config Release -j$(nproc)
+
+# Runtime stage: UBI 10 minimal
+FROM registry.access.redhat.com/ubi10/ubi-minimal:10.0
+
+RUN microdnf install -y \
+    vulkan-loader \
+    mesa-vulkan-drivers \
+    libatomic \
+    libstdc++ \
+    libgomp \
+    ca-certificates \
+    curl \
+    shadow-utils \
+    && microdnf clean all
+
+COPY --from=build /build/llama.cpp/build/bin/llama-server /usr/local/bin/
+COPY --from=build /build/llama.cpp/build/src/libllama.so /usr/local/lib/
+COPY --from=build /build/llama.cpp/build/ggml/src/libggml.so /usr/local/lib/
+
+RUN ldconfig \
+    && useradd -r -u 1001 -m -s /sbin/nologin llama
+
+USER 1001
+
+EXPOSE 8080
+
+ENV LLAMA_ARG_HOST=0.0.0.0
+ENV LLAMA_ARG_PORT=8080
+
+ENTRYPOINT ["llama-server"]
+
+HEALTHCHECK CMD curl -sf http://localhost:8080/health || exit 1
