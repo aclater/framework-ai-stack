@@ -1,0 +1,63 @@
+threshold: 0.3
+fallback_route: general
+
+routes:
+  analysis:
+    examples:
+      - "Summarize the key provisions of the defense authorization act"
+      - "Compare the strategies presented for sovereign AI"
+      - "What are the implications of this policy for NATO allies?"
+      - "Analyze the relationship between these defense programs"
+      - "Create a comprehensive overview of this topic"
+    model_url: http://host.containers.internal:8080
+    qdrant_url: http://host.containers.internal:6333
+    qdrant_collection: nato
+    docstore_url: postgresql://litellm:litellm@host.containers.internal:5432/litellm
+    reranker_top_n: 15
+    top_k: 40
+
+  personnel:
+    examples:
+      - "What is this person's role and background?"
+      - "Create a profile summary for this individual"
+      - "Who is responsible for this program?"
+      - "What are their qualifications and experience?"
+      - "who is adam clater"
+      - "tell me about john smith"
+      - "what do you know about jane doe"
+      - "describe the employee"
+      - "who is the CEO of this company"
+      - "what is john's job title"
+      - "find information about the new hire"
+      - "who is leading the team"
+      - "tell me about the person in the resume"
+      - "what does this individual's profile show"
+      - "who is this candidate and what is their experience"
+    model_url: http://host.containers.internal:8080
+    qdrant_url: http://host.containers.internal:6333
+    qdrant_collection: personnel
+    docstore_url: postgresql://litellm:litellm@host.containers.internal:5432/litellm
+    reranker_top_n: 5
+    top_k: 20
+
+  lookup:
+    examples:
+      - "What does the MPEP say about patentability?"
+      - "What section covers cybersecurity requirements?"
+      - "Find the provision about design patents"
+      - "What are the rules for patent examination?"
+    model_url: http://host.containers.internal:8080
+    qdrant_url: http://host.containers.internal:6333
+    qdrant_collection: mpep
+    docstore_url: postgresql://litellm:litellm@host.containers.internal:5432/litellm
+    reranker_top_n: 5
+    top_k: 20
+
+  general:
+    examples:
+      - "What is the capital of France?"
+      - "Explain how gravity works"
+      - "What is machine learning?"
+      - "How does TCP/IP work?"
+    model_url: http://host.containers.internal:8080
+    rag_enabled: false
