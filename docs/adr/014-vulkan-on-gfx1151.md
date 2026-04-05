@@ -34,7 +34,7 @@ Replace the ROCm HIP backend with Vulkan (RADV) for llama-server on gfx1151.
   libatomic, ca-certificates — non-root USER 1001
 
 **Quadlet changes:**
-- Image: `ghcr.io/aclater/ramalama-vulkan:latest` (replaces `quay.io/ramalama/rocm:0.18.0`)
+- Image: `ghcr.io/aclater/llama-vulkan:latest` (replaces `quay.io/ramalama/rocm:0.18.0`)
 - Device: `/dev/dri` only (no `/dev/kfd` — no ROCm compute stack needed)
 - Removed: `HSA_OVERRIDE_GFX_VERSION`, `GPU_MAX_HW_QUEUES`, `ROCBLAS_USE_HIPBLASLT`
 - Removed: `--flash-attn on`, `--cache-type-k q4_0`, `--cache-type-v q4_0`, `-dio`
