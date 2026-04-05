@@ -71,6 +71,19 @@ cp ragstack.env.example ~/.config/llm-stack/ragstack.env
   uninstall       remove quadlets (models kept)
 ```
 
+## Configuration
+
+### System prompt
+
+The ragpipe system prompt controls how the model cites documents and when it falls back to general knowledge. It is mounted from the host at runtime — no image rebuild required.
+
+- **Location**: `~/.config/ragpipe/system-prompt.txt`
+- **First install**: automatically copied from `config/ragpipe/system-prompt.txt` during `./llm-stack.sh setup`
+- **Changing it**: edit `~/.config/ragpipe/system-prompt.txt` and restart ragpipe: `systemctl --user restart ragpipe`
+- **Hot reload**: `curl -X POST http://localhost:8090/admin/reload-prompt -H "Authorization: Bearer $RAGPIPE_ADMIN_TOKEN"` — no restart needed
+
+For the grounding rules this implements, see [Grounding](docs/grounding.md).
+
 ## Claude Code integration
 
 Point Claude Code at the LiteLLM proxy:

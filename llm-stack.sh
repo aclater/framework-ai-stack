@@ -294,6 +294,15 @@ cmd_setup() {
     cp "$SCRIPT_DIR/configs/litellm-config.yaml" "$CONFIG_DIR/litellm-config.yaml"
     ok "Copied litellm-config.yaml"
 
+    # ragpipe system prompt — operator-editable without rebuilding the image
+    mkdir -p "$HOME/.config/ragpipe"
+    if [[ ! -f "$HOME/.config/ragpipe/system-prompt.txt" ]]; then
+        cp "$SCRIPT_DIR/config/ragpipe/system-prompt.txt" "$HOME/.config/ragpipe/system-prompt.txt"
+        ok "Copied system-prompt.txt — edit ~/.config/ragpipe/system-prompt.txt to customize"
+    else
+        ok "ragpipe system prompt already present"
+    fi
+
     if [[ "$GPU_VENDOR" != "nvidia" ]]; then
         if ! grep -q 'HSA_OVERRIDE_GFX_VERSION' "$HOME/.bashrc" 2>/dev/null; then
             printf '\n# LLM Stack — AMD ROCm\nexport HSA_OVERRIDE_GFX_VERSION=11.5.1\n' \
