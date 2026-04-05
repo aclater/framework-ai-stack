@@ -12,7 +12,7 @@ routes:
     model_url: http://host.containers.internal:8080
     qdrant_url: http://host.containers.internal:6333
     qdrant_collection: nato
-    docstore_url: postgresql://litellm:litellm@host.containers.internal:5432/litellm
+    # docstore_url sourced from DOCSTORE_URL env var (ragstack.env)
     reranker_top_n: 15
     top_k: 40
 
@@ -36,7 +36,7 @@ routes:
     model_url: http://host.containers.internal:8080
     qdrant_url: http://host.containers.internal:6333
     qdrant_collection: personnel
-    docstore_url: postgresql://litellm:litellm@host.containers.internal:5432/litellm
+    # docstore_url sourced from DOCSTORE_URL env var (ragstack.env)
     reranker_top_n: 5
     top_k: 20
 
@@ -49,7 +49,7 @@ routes:
     model_url: http://host.containers.internal:8080
     qdrant_url: http://host.containers.internal:6333
     qdrant_collection: mpep
-    docstore_url: postgresql://litellm:litellm@host.containers.internal:5432/litellm
+    # docstore_url sourced from DOCSTORE_URL env var (ragstack.env)
     reranker_top_n: 5
     top_k: 20
 
