@@ -14,6 +14,11 @@ Image=quay.io/ramalama/rocm:0.18.0
 # GPU passthrough — /dev/kfd (compute) + /dev/dri (render)
 AddDevice=-/dev/kfd
 AddDevice=-/dev/dri
+# SELinux container_t denies access to /dev/kfd (ROCm compute interface).
+# No upstream SELinux policy module exists for /dev/kfd on Fedora 43.
+# Disabling label confinement is required until ROCm ships an SELinux policy
+# or Fedora adds /dev/kfd to container device access rules.
+# Ref: ADR-011, https://github.com/ROCm/ROCm/issues/3987
 SecurityLabelDisable=true
 
 # GFX version override for AI Max+ 395; remove once ROCm ships gfx1151 support
