@@ -31,6 +31,11 @@ Environment=GPU_MAX_HW_QUEUES=1
 Environment=LLAMA_ARG_FLASH_ATTN=1
 Environment=LLAMA_ARG_CACHE_TYPE_K=q4_0
 Environment=LLAMA_ARG_CACHE_TYPE_V=q4_0
+# hipBLASLt kernels — reported 2-3x faster matmul on gfx1151 vs default
+# rocBLAS. No-op if not available in the container build; activates
+# automatically when a future image ships hipBLASLt support.
+# Ref: https://github.com/ggml-org/llama.cpp/issues/13565
+Environment=ROCBLAS_USE_HIPBLASLT=1
 
 # Model bind-mount — RamaLama stores models under ~/.local/share/ramalama
 Mount=type=bind,src=MODEL_PATH_PLACEHOLDER,target=/mnt/models/model.file,ro,Z
@@ -39,9 +44,14 @@ Mount=type=bind,src=MODEL_PATH_PLACEHOLDER,target=/mnt/models/model.file,ro,Z
 # --cache-type-k/v q4_0: halves KV cache vs q8_0, frees ~10GB system RAM
 # --parallel 2: doubles per-slot context (32K), halves KV cache overhead
 # --ctx-size 65536: 32K per slot is sufficient for RAG (typically <8K prompt)
+# -dio: direct I/O — reads model directly into GPU buffers, bypassing mmap.
+#   Required on gfx1151: mmap path hangs during HIP page-locking for models
+#   >6 GB because VMM is not supported (rocminfo VMM: no). Without -dio,
+#   tensors land in GTT (system RAM) instead of VRAM or loading stalls
+#   indefinitely. See ADR-010 and issue #26.
 Exec=llama-server --model /mnt/models/model.file --host 0.0.0.0 --port 8080 \
     --ctx-size 65536 --n-gpu-layers 999 --threads 16 --parallel 2 \
-    --flash-attn on --cache-type-k q4_0 --cache-type-v q4_0 --jinja
+    --flash-attn on --cache-type-k q4_0 --cache-type-v q4_0 -dio --jinja
 
 ContainerName=ramalama
 PublishPort=8080:8080
