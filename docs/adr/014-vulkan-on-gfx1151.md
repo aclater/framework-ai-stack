@@ -54,7 +54,8 @@ RAM and eliminate swap pressure.
 - No ROCm dependency — simpler container, smaller attack surface
 - No `HSA_OVERRIDE_GFX_VERSION` needed
 - Fewer ROCm-specific tunables
-- Potentially simpler SELinux policy (no SecurityLabelDisable)
+- **No SecurityLabelDisable needed** — SELinux `container_t` can access
+  `/dev/dri/renderD128` natively (verified on Fedora 43)
 
 **Negative:**
 - **No flash attention** — falls back to CPU attention kernel on AMD
@@ -66,12 +67,24 @@ RAM and eliminate swap pressure.
 - **gfx1151 specific issues** — model loading (#18741), PP perf with large
   ubatch (#18725), missing compute shaders (#20354)
 
+**Benchmarks (2026-04-05, Qwen3.5-35B-A3B Q6_K_XL on gfx1151):**
+
+| Metric | ROCm HIP + `-dio` | Vulkan RADV |
+|--------|-------------------|-------------|
+| Generation (700 tok) | 39 t/s | **43 t/s** |
+| Prompt processing (2K tok) | ~1000 t/s | ~1000 t/s |
+| VRAM used | 400 MB (GTT: 33 GB) | **34 GB** (GTT: 1.5 GB) |
+| System RAM used | 40 GB + 2.5 GB swap | **8.4 GB** |
+| SecurityLabelDisable | Required | **Not needed** |
+
+Vulkan is 10% faster at generation, uses VRAM as intended, and frees
+~32 GB of system RAM. The lack of flash attention and KV cache quantization
+is offset by the massive memory improvement on UMA.
+
 **Tradeoffs:**
-- f16 KV cache uses ~2x more memory than q4_0, but on 128 GB UMA this is
-  acceptable
-- Attention falls back to CPU but remains correct
-- Vulkan t/s gen expected to be lower than ROCm baseline (39 t/s with -dio);
-  benchmark required to establish new baseline
+- f16 KV cache uses ~2x more memory than q4_0, but on 128 GB UMA with
+  proper VRAM placement this is acceptable — 34 GB VRAM still leaves
+  ~30 GB free for larger contexts or models
 
 ## References
 
