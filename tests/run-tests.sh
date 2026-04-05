@@ -232,8 +232,9 @@ assert_contains "ramalama.container has Image= line" "^Image=" \
 assert_contains "litellm uses main-stable image"    "main-stable"          "$(cat $QUADLET_SRC/litellm.container)"
 assert_not_contains "litellm has no bad env interpolation" 'LITELLM_MASTER_KEY=${' "$(cat $QUADLET_SRC/litellm.container)"
 assert_contains "litellm loads env file"           "EnvironmentFile"      "$(cat $QUADLET_SRC/litellm.container)"
-assert_contains "litellm has postgres DATABASE_URL" \
-    "DATABASE_URL=postgresql" "$(cat $QUADLET_SRC/litellm.container)"
+# DATABASE_URL is now in ragstack.env, loaded via EnvironmentFile
+assert_contains "litellm loads ragstack.env" \
+    "ragstack.env" "$(cat $QUADLET_SRC/litellm.container)"
 
 # ramalama container checks
 assert_contains "ramalama publishes 8080" "8080" "$(cat $QUADLET_SRC/ramalama.container)"
