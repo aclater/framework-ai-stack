@@ -202,3 +202,35 @@ User scripts and tools live in ~/.local/bin/, not ~/bin/.
 - When referencing or running user scripts, always use ~/.local/bin/<script>
 - Never create or reference scripts in ~/bin/ — that path is not used on
   this system
+
+
+## Working directory conventions
+
+All git repositories and working directories must follow this structure:
+
+- `~/git/` — permanent repositories only. Clone repos here when you intend
+  to work in them long-term. Never create temporary work here.
+- `~/git-work/<task-name>/` — temporary clones for PR work. Create a
+  subdirectory named after the task (e.g. ~/git-work/fix-qdrant-ipv6/).
+  Clean up after the PR is merged.
+- `~/.local/bin/` — user scripts and tools. Never use ~/bin/.
+- Never create git-* directories directly in ~/. They clutter the home
+  directory and never get cleaned up.
+
+When starting any task that requires cloning repos:
+```bash
+mkdir -p ~/git-work/
+cd ~/git-work/
+gh repo clone aclater/
+```
+
+When the PR is merged, clean up:
+```bash
+rm -rf ~/git-work/
+```
+
+Or run the cleanup script periodically:
+```bash
+~/.local/bin/cleanup-git-work.sh --dry-run
+~/.local/bin/cleanup-git-work.sh
+```
