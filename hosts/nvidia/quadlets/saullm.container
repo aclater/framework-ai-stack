@@ -1,0 +1,50 @@
+# ~/.config/containers/systemd/saullm.container
+# SaulLM-7B-Instruct — legal domain LLM for MPEP/patent queries
+# Model: MaziyarPanahi/Saul-Instruct-v1-GGUF Q8_0 (7.2 GB)
+# Based on Mistral-7B, fine-tuned on 30B tokens of legal text (MIT license)
+# Deployed on lennon (NVIDIA 4070 Ti, 12 GB VRAM, CUDA)
+# Managed by: systemctl --user [start|stop|restart|status] saullm
+
+[Unit]
+Description=SaulLM-7B-Instruct (legal domain)
+After=local-fs.target network-online.target
+Wants=network-online.target
+
+[Container]
+# Same CUDA image as main ramalama — provides llama-server
+Image=quay.io/ramalama/cuda:latest
+
+# NVIDIA GPU passthrough via CDI
+AddDevice=nvidia.com/gpu=all
+# Upstream CUDA/Debian image triggers SELinux execmem denial on Fedora 43.
+# No upstream SELinux policy for this image exists (see ADR-011).
+SecurityLabelDisable=true
+
+# Model bind-mount — downloaded via:
+#   huggingface-cli download MaziyarPanahi/Saul-Instruct-v1-GGUF \
+#     Saul-Instruct-v1.Q8_0.gguf --local-dir ~/.local/share/ramalama/models/saullm
+Mount=type=bind,src=SAULLM_MODEL_PATH_PLACEHOLDER,target=/mnt/models/model.file,ro,Z
+
+# SaulLM-7B Q8_0 (7.2 GB) fits in 12 GB VRAM with ~4 GB for KV cache.
+# 16K context sufficient for RAG (prompts typically <8K).
+# Single slot — legal queries are low-concurrency.
+Exec=llama-server --model /mnt/models/model.file --host 0.0.0.0 --port 8081 \
+    --ctx-size 16384 --n-gpu-layers 999 --threads 8 --parallel 1 \
+    --flash-attn on --cache-type-k q8_0 --cache-type-v q8_0
+
+ContainerName=saullm
+PublishPort=8081:8081
+
+HealthCmd=curl -sf http://127.0.0.1:8081/health
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=60s
+
+[Service]
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=120s
+
+[Install]
+WantedBy=default.target
