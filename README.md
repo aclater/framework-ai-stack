@@ -11,12 +11,20 @@ Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB
 | postgres | `quay.io/sclorg/postgresql-16-c9s` | 5432 | LiteLLM state + document store |
 | qdrant | `docker.io/qdrant/qdrant:v1.17.1` | 6333 | Vector search (int8 scalar quantization) |
 | ramalama | `quay.io/ramalama/rocm:latest` | 8080 | Qwen3.5 (model + quant selected by auto-tuner) |
-| ragpipe | ghcr.io/aclater/ragpipe (UBI9/python-311) | 8090 | Search → hydrate → rerank → ground → cite → inject |
+| ragpipe | `ghcr.io/aclater/ragpipe:main-rocm` | 8090 | Search → hydrate → rerank → ground → cite → inject |
 | litellm | `ghcr.io/berriai/litellm:main-stable` | 4000 | OpenAI-compatible proxy |
 | open-webui | `ghcr.io/open-webui/open-webui:v0.8.12` | 3000 | Chat UI, pinned to v0.8.12 |
-| ragstuffer | `localhost/ragstuffer` (built from ubi10) | — | Ingests from Drive, git repos, and web URLs into docstore + Qdrant |
+| ragstuffer | `localhost/ragstuffer:main` | 8091 | Admin API (ingest trigger, metrics) |
+| ragwatch | `localhost/ragwatch:main` | 9090 | Prometheus aggregation + /metrics/summary JSON |
 
 Models are pulled and managed by [RamaLama](https://github.com/containers/ramalama). LiteLLM routes all aliases through the ragpipe. The proxy searches Qdrant for candidate vectors (reference payloads only — no text stored in Qdrant), hydrates chunk text from the Postgres document store, reranks with cross-encoder/ms-marco-MiniLM-L-6-v2, and injects the top results as context before forwarding to the model. Documents from Google Drive, git repos, and web URLs are automatically ingested — no model restart required.
+
+### GPU requirements
+
+- **GPU**: AMD Ryzen AI Max+ 395 (gfx1151) with ROCm 7.x
+- **Required env**: `HSA_OVERRIDE_GFX_VERSION=11.5.1`
+- **GPU provider**: MIGraphXExecutionProvider only — ROCMExecutionProvider is ABI-incompatible with ROCm 7.x
+- **⚠️ Startup time**: ragpipe takes ~3 minutes on first query after startup while MIGraphX compiles the inference graph. Plan restarts accordingly.
 
 ## Prerequisites
 
@@ -38,8 +46,8 @@ cp ragstack.env.example ~/.config/llm-stack/ragstack.env
 # Edit ragstack.env with real passwords and tokens before starting services
 
 ./llm-stack.sh deps          # install system packages (sudo)
-./llm-stack.sh groups        # add user to render/video (sudo + reboot)
-./llm-stack.sh setup         # verify GPU, auto-tune, write configs
+./llm-stack.sh groups        # add user to render/video groups
+./llm-stack.sh setup         # verify GPU, configure dirs
 ./llm-stack.sh pull-image    # pull the RamaLama ROCm container image
 ./llm-stack.sh pull-models   # download model (size depends on tune)
 ./llm-stack.sh build         # build ragpipe (from ~/git/ragpipe) and ragstuffer images
@@ -73,16 +81,40 @@ cp ragstack.env.example ~/.config/llm-stack/ragstack.env
 
 ## Configuration
 
-### System prompt
+### System prompt (hot-reloadable)
 
 The ragpipe system prompt controls how the model cites documents and when it falls back to general knowledge. It is mounted from the host at runtime — no image rebuild required.
 
 - **Location**: `~/.config/ragpipe/system-prompt.txt`
 - **First install**: automatically copied from `config/ragpipe/system-prompt.txt` during `./llm-stack.sh setup`
-- **Changing it**: edit `~/.config/ragpipe/system-prompt.txt` and restart ragpipe: `systemctl --user restart ragpipe`
-- **Hot reload**: `curl -X POST http://localhost:8090/admin/reload-prompt -H "Authorization: Bearer $RAGPIPE_ADMIN_TOKEN"` — no restart needed
+- **Hot reload without restart**:
+  ```bash
+  curl -X POST http://localhost:8090/admin/reload-prompt \
+    -H "Authorization: Bearer $RAGPIPE_ADMIN_TOKEN"
+  ```
 
 For the grounding rules this implements, see [Grounding](docs/grounding.md).
+
+### Routes (hot-reloadable)
+
+Semantic routing configuration. Mounted from the host at runtime.
+
+- **Location**: `~/.config/ragpipe/routes.yaml`
+- **Hot reload without restart**:
+  ```bash
+  curl -X POST http://localhost:8090/admin/reload-routes \
+    -H "Authorization: Bearer $RAGPIPE_ADMIN_TOKEN"
+  ```
+
+### Environment variables for ragstuffer
+
+Configured in `~/.config/llm-stack/ragstack.env`:
+
+```bash
+GDRIVE_FOLDER_ID=your-folder-id
+REPO_SOURCES=[{"url": "https://github.com/org/repo", "glob": "**/*.md"}]
+WEB_SOURCES=["https://example.com/docs"]
+```
 
 ## Claude Code integration
 
@@ -102,6 +134,41 @@ Available model aliases (all route to Qwen3.5-35B-A3B on :8080):
 | `code` | Completion, debugging, generation |
 | `fast` | Quick queries, drafting |
 
+## Health checks
+
+All services expose health endpoints:
+
+```bash
+curl http://localhost:8090/health   # ragpipe
+curl http://localhost:8091/health   # ragstuffer
+curl http://localhost:9090/health   # ragwatch (returns "degraded" if upstream is down)
+curl http://localhost:4000/health   # litellm
+curl http://localhost:6333/readyz   # qdrant
+```
+
+## Observability
+
+### Prometheus metrics
+
+```bash
+# ragpipe metrics
+curl http://localhost:8090/metrics
+
+# ragstuffer metrics
+curl http://localhost:8091/metrics
+
+# ragwatch aggregated metrics
+curl http://localhost:9090/metrics
+```
+
+### ragwatch /metrics/summary
+
+```bash
+curl http://localhost:9090/metrics/summary | python3 -m json.tool
+```
+
+Returns JSON with parsed metrics from both ragpipe and ragstuffer.
+
 ## CI / code quality
 
 GitHub Actions run on every push and PR:
@@ -117,8 +184,8 @@ Run locally:
 ```bash
 ruff check && ruff format --check   # Python lint + format
 # ragpipe tests: cd ~/git/ragpipe && python -m pytest -v
-cd ragstuffer && python -m pytest -v # ragstuffer tests (11)
-bash tests/run-tests.sh             # shell tests (86)
+cd ~/git-work/docs-audit/ragstuffer && python -m pytest -v # ragstuffer tests
+bash tests/run-tests.sh             # shell tests
 ```
 
 ## Documentation
@@ -158,6 +225,18 @@ bash tests/run-tests.sh             # shell tests (86)
 | [002](docs/adr/002-reference-only-indexing.md) | Reference-only indexing — vectors in Qdrant, text in Postgres |
 | [003](docs/adr/003-corpus-preferring-grounding.md) | Corpus-preferring grounding with transparent fallback |
 | [013](docs/adr/013-lightweight-cpu-reranker.md) | CPU-only sentence-transformers on gfx1151 (embedder + reranker) |
+
+## Known issues
+
+1. **MIGraphX startup (~3 min):** ragpipe takes ~3 minutes on the first query after startup while MIGraphX compiles the inference graph. This is expected behavior. Do not restart ragpipe in production unless critical.
+
+2. **gfx1151 ROCm compatibility:** MIGraphX is the only supported AMD GPU provider on ROCm 7.x. ROCMExecutionProvider fails with ABI errors. Do not attempt to use it.
+
+3. **Reranker on CPU:** The cross-encoder reranker (MiniLM-L-6-v2) runs on CPU because MIGraphX fails at inference for this model. This is not a bug — the reranker is small (87 MB) and fast enough on CPU (~10ms for 40 candidates).
+
+4. **LiteLLM supply chain:** LiteLLM is pinned to `main-stable` after a supply chain incident. See ADR-009. Do not upgrade without verifying the release is clean.
+
+5. **UMA frame buffer:** BIOS must have UMA frame buffer set to 64 GB for the model to fit in unified memory. Without this, the model will not load.
 
 ## Acknowledgements
 
