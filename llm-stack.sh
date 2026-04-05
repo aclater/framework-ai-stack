@@ -829,6 +829,25 @@ cmd_install() {
 
     systemctl --user daemon-reload
 
+    # Copy config files (routes.yaml, system-prompt.txt) if not already present
+    mkdir -p "$HOME/.config/ragpipe"
+    if [[ -f "$SCRIPT_DIR/config/ragpipe/routes.yaml" ]]; then
+        if [[ ! -f "$HOME/.config/ragpipe/routes.yaml" ]]; then
+            cp "$SCRIPT_DIR/config/ragpipe/routes.yaml" "$HOME/.config/ragpipe/routes.yaml"
+            ok "Copied routes.yaml to ~/.config/ragpipe/"
+        else
+            log "routes.yaml already exists in ~/.config/ragpipe/, keeping existing"
+        fi
+    fi
+    if [[ -f "$SCRIPT_DIR/config/ragpipe/system-prompt.txt" ]]; then
+        if [[ ! -f "$HOME/.config/ragpipe/system-prompt.txt" ]]; then
+            cp "$SCRIPT_DIR/config/ragpipe/system-prompt.txt" "$HOME/.config/ragpipe/system-prompt.txt"
+            ok "Copied system-prompt.txt to ~/.config/ragpipe/"
+        else
+            log "system-prompt.txt already exists in ~/.config/ragpipe/, keeping existing"
+        fi
+    fi
+
     # Verify generator is happy
     local errors
     errors=$(/usr/lib/systemd/user-generators/podman-user-generator -dryrun -user 2>&1 \
