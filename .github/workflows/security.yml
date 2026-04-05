@@ -11,7 +11,13 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
-# No Python source in framework-ai-stack — CodeQL Python analysis not applicable.
-# Container security (Trivy) is handled in the ragdeck repo where the Containerfile lives.
+jobs:
+  # framework-ai-stack is a configuration repo — no Python source, no executables.
+  # Python analysis (CodeQL) lives in the component repos (ragdeck, ragpipe, etc.)
+  # Container image scanning (Trivy) also lives in the component repos.
+  none:
+    name: No security scans applicable
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No Python source in framework-ai-stack — security scanning not applicable"
