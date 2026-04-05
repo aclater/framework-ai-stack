@@ -1,0 +1,52 @@
+# ~/.config/containers/systemd/ragstuffer-mpep.container
+# ragstuffer — polls USPTO/MPEP document sources and ingests into Qdrant + Postgres
+# Source: https://github.com/aclater/ragstuffer
+# Managed by: systemctl --user [start|stop|restart|status] ragstuffer-mpep
+
+[Unit]
+Description=ragstuffer-mpep (MPEP patent document ingestion)
+After=local-fs.target network-online.target qdrant.service ragpipe.service
+Wants=network-online.target
+Requires=qdrant.service ragpipe.service
+
+[Container]
+Image=localhost/ragstuffer:main
+
+Volume=%h/git/ragstuffer:/app:ro,z
+Volume=%h/git/ragpipe/ragpipe/docstore.py:/app/docstore.py:ro,z
+Volume=%h/.config/ramalama/gdrive-sa.json:/run/secrets/gdrive-sa.json:ro,z
+Volume=rag-staging:/staging:Z
+
+EnvironmentFile=%h/.config/llm-stack/env
+EnvironmentFile=%h/.config/llm-stack/ragstack.env
+
+Environment=GOOGLE_APPLICATION_CREDENTIALS=/run/secrets/gdrive-sa.json
+Environment=STAGING_DIR=/staging
+Environment=QDRANT_URL=http://host.containers.internal:6333
+Environment=QDRANT_COLLECTION=mpep
+Environment=EMBED_URL=http://host.containers.internal:8090/v1/embeddings
+Environment=DOCSTORE_BACKEND=postgres
+Environment=GDRIVE_FOLDER_ID=<mpep-folder-id>
+
+# Admin API for triggering ingestion (POST /admin/ingest-now, /admin/ingest-full)
+Environment=RAGSTUFFER_ADMIN_PORT=8093
+
+Network=host
+
+Exec=python3.12 /app/ragstuffer.py
+
+ContainerName=ragstuffer-mpep
+
+HealthCmd=curl -sf http://127.0.0.1:8093/health
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+HealthStartPeriod=60s
+
+[Service]
+Restart=on-failure
+RestartSec=30s
+TimeoutStartSec=300s
+
+[Install]
+WantedBy=default.target

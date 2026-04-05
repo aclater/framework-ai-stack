@@ -15,6 +15,7 @@ Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB
 | litellm | `ghcr.io/berriai/litellm:main-stable` | 4000 | OpenAI-compatible proxy |
 | open-webui | `ghcr.io/open-webui/open-webui:v0.8.12` | 3000 | Chat UI, pinned to v0.8.12 |
 | ragstuffer | `localhost/ragstuffer:main` | 8091 | Admin API (ingest trigger, metrics) |
+| ragstuffer-mpep | `localhost/ragstuffer:main` | 8093 | USPTO/MPEP patent ingestion |
 | ragwatch | `localhost/ragwatch:main` | 9090 | Prometheus aggregation + /metrics/summary JSON |
 
 Models are pulled and managed by [RamaLama](https://github.com/containers/ramalama). LiteLLM routes all aliases through the ragpipe. The proxy searches Qdrant for candidate vectors (reference payloads only — no text stored in Qdrant), hydrates chunk text from the Postgres document store, reranks with cross-encoder/ms-marco-MiniLM-L-6-v2, and injects the top results as context before forwarding to the model. Documents from Google Drive, git repos, and web URLs are automatically ingested — no model restart required.
@@ -140,7 +141,8 @@ All services expose health endpoints:
 
 ```bash
 curl http://localhost:8090/health   # ragpipe
-curl http://localhost:8091/health   # ragstuffer
+curl http://localhost:8091/health   # ragstuffer (documents collection)
+curl http://localhost:8093/health   # ragstuffer-mpep (mpep collection)
 curl http://localhost:9090/health   # ragwatch (returns "degraded" if upstream is down)
 curl http://localhost:4000/health   # litellm
 curl http://localhost:6333/readyz   # qdrant
@@ -156,6 +158,8 @@ curl http://localhost:8090/metrics
 
 # ragstuffer metrics
 curl http://localhost:8091/metrics
+# ragstuffer-mpep metrics
+curl http://localhost:8093/metrics
 
 # ragwatch aggregated metrics
 curl http://localhost:9090/metrics
