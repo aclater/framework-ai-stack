@@ -4,11 +4,19 @@ fallback_route: general
 routes:
   analysis:
     examples:
+      # NATO / defense / intelligence / strategy / policy
       - "Summarize the key provisions of the defense authorization act"
-      - "Compare the strategies presented for sovereign AI"
       - "What are the implications of this policy for NATO allies?"
-      - "Analyze the relationship between these defense programs"
-      - "Create a comprehensive overview of this topic"
+      - "Analyze NATO readiness for post-quantum threats"
+      - "What is NATO's position on post-quantum cryptography?"
+      - "Summarize the NATO capability targets analysis"
+      - "What does the strategic intelligence brief say about PQC?"
+      - "How does the NATO alliance approach quantum-resistant encryption?"
+      - "What defense strategies address cybersecurity threats to NATO?"
+      - "Compare the NATO sovereign AI strategies"
+      - "What are the key findings in this defense intelligence brief?"
+      - "NATO defense strategy for quantum computing threats"
+      - "Analyze the relationship between NATO defense programs"
     model_url: http://host.containers.internal:8080
     qdrant_url: http://host.containers.internal:6333
     qdrant_collection: nato
@@ -18,21 +26,19 @@ routes:
 
   personnel:
     examples:
-      - "What is this person's role and background?"
+      # Person lookups — names, roles, backgrounds, resumes, profiles
+      - "Who is Adam Clater and what is his background?"
+      - "Tell me about John Smith's role and experience"
+      - "Who is the CEO of this company?"
+      - "What is Jane Doe's job title and responsibilities?"
       - "Create a profile summary for this individual"
+      - "Who is leading the project team?"
+      - "Describe this employee's career history and qualifications"
+      - "What does this person's resume show?"
+      - "Find information about the candidate's work experience"
       - "Who is responsible for this program?"
-      - "What are their qualifications and experience?"
-      - "who is adam clater"
-      - "tell me about john smith"
-      - "what do you know about jane doe"
-      - "describe the employee"
-      - "who is the CEO of this company"
-      - "what is john's job title"
-      - "find information about the new hire"
-      - "who is leading the team"
-      - "tell me about the person in the resume"
-      - "what does this individual's profile show"
-      - "who is this candidate and what is their experience"
+      - "Tell me about the person in the personnel file"
+      - "What is this individual's professional background?"
     model_url: http://host.containers.internal:8080
     qdrant_url: http://host.containers.internal:6333
     qdrant_collection: personnel
@@ -42,10 +48,17 @@ routes:
 
   lookup:
     examples:
+      # MPEP / patent law / regulatory reference
       - "What does the MPEP say about patentability?"
-      - "What section covers cybersecurity requirements?"
-      - "Find the provision about design patents"
-      - "What are the rules for patent examination?"
+      - "Find the MPEP provision about design patents"
+      - "What are the MPEP rules for patent examination?"
+      - "Look up MPEP section 2100 on patentability"
+      - "What does the patent manual say about prior art?"
+      - "Find the patent examination guidelines for obviousness"
+      - "What are the MPEP requirements for patent claims?"
+      - "Which MPEP section covers patent eligibility?"
+      - "What does MPEP chapter 700 say about examination procedures?"
+      - "Find the MPEP section on cybersecurity patent requirements"
     model_url: http://host.containers.internal:8080
     qdrant_url: http://host.containers.internal:6333
     qdrant_collection: mpep
@@ -59,5 +72,7 @@ routes:
       - "Explain how gravity works"
       - "What is machine learning?"
       - "How does TCP/IP work?"
+      - "What year did World War 2 end?"
+      - "Explain the difference between RAM and ROM"
     model_url: http://host.containers.internal:8080
     rag_enabled: false

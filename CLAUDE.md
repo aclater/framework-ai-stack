@@ -234,3 +234,37 @@ Or run the cleanup script periodically:
 ~/.local/bin/cleanup-git-work.sh --dry-run
 ~/.local/bin/cleanup-git-work.sh
 ```
+
+
+## GitHub issue workflow
+
+Every task must be tracked in GitHub before work begins. This is mandatory.
+
+**Before starting any implementation task:**
+1. Check if a GitHub issue exists for the work:
+```bash
+   gh issue list --repo aclater/ --search ""
+```
+2. If no issue exists, create one first:
+```bash
+   gh issue create \
+     --repo aclater/ \
+     --title "" \
+     --body "" \
+     --label "priority: ,type: ,agent: "
+```
+3. Note the issue number before proceeding.
+
+**All commits must reference the issue:**
+```
+feat(ragpipe): add prometheus metrics endpoint (fixes #14)
+fix(ragstuffer): deduplicate cited chunks in streaming path (refs #8)
+```
+
+**All PR bodies must include:**
+- `Closes #N` — if the PR fully resolves the issue
+- `Refs #N` — if the PR partially addresses the issue
+
+**Never start implementation without an issue number.**
+This ensures work is discoverable across parallel agent sessions
+without requiring conversation history.
