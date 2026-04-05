@@ -28,7 +28,7 @@ Local AI stack for Fedora 43. LLM inference with live RAG from Google Drive, git
 - `retune` re-runs tuning + restart without re-downloading the model
 - `setup` calls `tune` automatically on first run
 
-Per-GPU-profile overrides live in `hosts/<profile>/quadlets/` and are overlaid during install. Currently: `hosts/nvidia/` for CUDA systems.
+Per-GPU-profile overrides live in `hosts/<profile>/quadlets/` and are overlaid during install. Currently: `hosts/nvidia/` for CUDA systems, `hosts/gfx1151/` for AMD Strix Halo (Vulkan).
 
 ## Architecture
 ```

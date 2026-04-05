@@ -1,0 +1,80 @@
+# Build stage: Fedora 43 for compiler toolchain and glslc
+# Fedora build → UBI runtime is a common multi-stage pattern; glibc ABI is
+# compatible because UBI 10 is based on Fedora 42/43.
+FROM registry.fedoraproject.org/fedora:43 AS build
+
+RUN dnf install -y --nodocs --setopt=install_weak_deps=False \
+    cmake \
+    gcc \
+    gcc-c++ \
+    ninja-build \
+    git \
+    vulkan-loader-devel \
+    glslc \
+    libstdc++-devel \
+    libatomic \
+    libcurl-devel \
+    && dnf clean all && rm -rf /var/cache/dnf/*
+
+WORKDIR /build
+
+# Pin to a release tag — update by bumping this ARG.
+# Check: git ls-remote --tags https://github.com/ggml-org/llama.cpp.git 'refs/tags/b*' | tail -5
+ARG LLAMA_CPP_TAG=b8668
+RUN git clone --depth 1 --branch ${LLAMA_CPP_TAG} https://github.com/ggml-org/llama.cpp.git
+
+WORKDIR /build/llama.cpp
+
+RUN cmake -S . -B build -G Ninja \
+    -DGGML_VULKAN=ON \
+    -DGGML_RPC=ON \
+    -DLLAMA_CURL=ON \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DLLAMA_BUILD_SERVER=ON \
+    -DLLAMA_BUILD_TESTS=OFF \
+    -DLLAMA_BUILD_EXAMPLES=OFF \
+    && cmake --build build --config Release -j$(nproc) \
+    && cmake --install build --config Release
+
+# Ensure all shared libs are findable at runtime
+RUN find /build/llama.cpp/build -type f -name 'lib*.so*' -exec cp -n {} /usr/lib64/ \; \
+    && ldconfig
+
+# ── Runtime stage: UBI 10 minimal ──────────────────────────────────────────────
+FROM registry.access.redhat.com/ubi10/ubi-minimal
+
+RUN microdnf install -y --nodocs --setopt=install_weak_deps=0 \
+    vulkan-loader \
+    mesa-vulkan-drivers \
+    libatomic \
+    libstdc++ \
+    libgomp \
+    libgcc \
+    ca-certificates \
+    curl-minimal \
+    shadow-utils \
+    && microdnf clean all && rm -rf /var/cache/dnf/*
+
+# Copy installed binaries and libraries from build stage
+COPY --from=build /usr/bin/llama-server /usr/local/bin/
+COPY --from=build /usr/lib64/libllama*.so* /usr/lib64/
+COPY --from=build /usr/lib64/libggml*.so* /usr/lib64/
+COPY --from=build /usr/lib64/libmtmd*.so* /usr/lib64/
+
+RUN echo "/usr/local/lib" > /etc/ld.so.conf.d/local.conf \
+    && echo "/usr/local/lib64" >> /etc/ld.so.conf.d/local.conf \
+    && ldconfig \
+    && useradd -r -u 1001 -m -s /sbin/nologin llama
+
+USER 1001
+
+EXPOSE 8080
+
+ENV LLAMA_ARG_HOST=0.0.0.0
+ENV LLAMA_ARG_PORT=8080
+
+ENTRYPOINT ["llama-server"]
+
+HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=120s \
+    CMD curl -sf http://localhost:8080/health || exit 1

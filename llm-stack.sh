@@ -17,8 +17,9 @@ UNITS=(postgres qdrant ramalama ragpipe litellm ragstuffer open-webui)
 # and are overlaid onto the base quadlets/ during install.
 #
 # Profiles:
-#   nvidia — NVIDIA GPU (CUDA)
-#   rocm   — AMD GPU (ROCm)
+#   nvidia  — NVIDIA GPU (CUDA)
+#   rocm    — AMD GPU (ROCm)
+#   gfx1151 — AMD Strix Halo (gfx1151) with Vulkan backend
 # Model selection is controlled by MODEL_PREFERENCE (general or coder)
 # combined with available VRAM. See env.example for details.
 _detect_gpu() {
@@ -41,6 +42,9 @@ _detect_gpu() {
 _detect_gpu
 
 GPU_PROFILE="$GPU_VENDOR"
+if [[ "$GPU_VENDOR" == "rocm" && "$GPU_NAME" == "gfx1151" ]]; then
+    GPU_PROFILE="gfx1151"
+fi
 HOST_DIR="$SCRIPT_DIR/hosts/$GPU_PROFILE"
 if [[ -d "$HOST_DIR" ]]; then
     HOST_QUADLET_SRC="$HOST_DIR/quadlets"
