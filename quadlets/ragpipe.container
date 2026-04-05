@@ -20,6 +20,11 @@ Volume=ragpipe-model-cache:/home/default/.cache/ragpipe:Z
 # Routes config (local file, not in repo)
 Volume=%h/.config/ragpipe/routes.yaml:/etc/ragpipe/routes.yaml:ro,Z
 
+# System prompt — edit ~/.config/ragpipe/system-prompt.txt to change model
+# citation behavior without rebuilding the image. First-run setup copies this
+# from config/ragpipe/system-prompt.txt if not already present.
+Volume=%h/.config/ragpipe/system-prompt.txt:/etc/ragpipe/system-prompt.txt:ro,Z
+
 # Run as non-root user (default in UBI Python images, UID 1001)
 User=1001
 
@@ -34,6 +39,9 @@ EnvironmentFile=%h/.config/llm-stack/ragstack.env
 # Semantic router — optional, ragpipe works without RAGPIPE_ROUTES_FILE
 # Create ~/.config/ragpipe/routes.yaml to enable routing (see ragpipe docs)
 Environment=RAGPIPE_ROUTES_FILE=/etc/ragpipe/routes.yaml
+
+# System prompt — loaded from file by ragpipe on startup
+Environment=RAGPIPE_SYSTEM_PROMPT_FILE=/etc/ragpipe/system-prompt.txt
 
 # Override ragpipe defaults for wider retrieval window (default: 20/5)
 Environment=RAG_TOP_K=40
