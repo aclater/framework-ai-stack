@@ -26,7 +26,7 @@ Environment=QDRANT_URL=http://host.containers.internal:6333
 Environment=QDRANT_COLLECTION=mpep
 Environment=EMBED_URL=http://host.containers.internal:8090/v1/embeddings
 Environment=DOCSTORE_BACKEND=postgres
-Environment=GDRIVE_FOLDER_ID=<mpep-folder-id>
+Environment=GDRIVE_FOLDER_ID=1BbOdtp9fj6LdtRWhpe9LA1TmTBvyOkAd
 
 # Admin API for triggering ingestion (POST /admin/ingest-now, /admin/ingest-full)
 Environment=RAGSTUFFER_ADMIN_PORT=8093
