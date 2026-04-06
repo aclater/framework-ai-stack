@@ -51,15 +51,17 @@ Environment=RERANKER_TOP_N=15
 Environment=DOCSTORE_BACKEND=postgres
 
 # AMD ROCm GPU access for ONNX Runtime inference (gfx1151)
-# Force MIGraphXExecutionProvider — ROCMExecutionProvider segfaults on gfx1151
-# (RDNA 4 not yet supported by ROCM EP). MIGraphX uses graph-level compilation
-# and handles gfx1151 via HSA_OVERRIDE_GFX_VERSION.
-Environment=RAGPIPE_DEVICE=migraphx
+# Do NOT force RAGPIPE_DEVICE=migraphx — PR #42 added gfx1151 auto-detection
+# that skips MIGraphX when CPU is faster (UMA APUs where tensors land in GTT).
+# Let _get_providers() auto-detect the best provider.
 AddDevice=/dev/kfd
 AddDevice=/dev/dri
 Environment=HSA_OVERRIDE_GFX_VERSION=11.5.1
 # MIOpen JIT-compiles kernels for gfx1151 on first run; cache in writable volume
 Environment=MIOPEN_USER_DB_PATH=/home/default/.cache/ragpipe/miopen
+# MXR cache for ragpipe Python code (models.py reads this env var)
+# Must point inside the writable ragpipe-model-cache volume
+Environment=RAGPIPE_MXR_CACHE=/home/default/.cache/ragpipe/mxr
 # SELinux cannot label /dev/kfd — required for ROCm device access
 # Upstream: https://github.com/ROCm/ROCm/issues/2983
 SecurityLabelDisable=true
