@@ -13,7 +13,7 @@ Local AI stack for Fedora 43. LLM inference with live RAG from Google Drive, git
 | ragstuffer-mpep | 8093 | ghcr.io/aclater/ragstuffer:main | USPTO/MPEP patent collection |
 | ragwatch | 9090 | ghcr.io/aclater/ragwatch:main | Prometheus aggregation |
 | ragdeck | 8092 | ghcr.io/aclater/ragdeck:main | Admin UI |
-| llama-vulkan | 8080 | localhost/llama-vulkan:b8668 | Qwen3.5-35B-A3B via Vulkan RADV |
+| llama-vulkan | 8080 | ghcr.io/aclater/llama-vulkan:b8668 | Qwen3.5-35B-A3B via Vulkan RADV |
 | qdrant | 6333 | docker.io/qdrant/qdrant:v1.17.1 | Vector search |
 | postgres | 5432 | quay.io/sclorg/postgresql-16-c9s | Document store + LiteLLM state |
 
@@ -73,8 +73,8 @@ ragdeck (:8092) — admin UI for all services
 - Empty retrieval is not an error — model answers from general knowledge with prefix
 - Audit log captures grounding decisions without logging text content
 - LLM inference: Vulkan RADV via llama-vulkan (gfx1151 optimized)
-- MXR cache: cold start ~3:53, warm start ~6s via `ORT_MIGRAPHX_MODEL_CACHE_PATH`
-- Embedder/reranker on CPU (gfx1151): MIGraphX GTT is slower than CPU for small models
+- MXR cache (when MIGraphX path enabled): cold start ~3:53, warm start ~6s via `ORT_MIGRAPHX_MODEL_CACHE_PATH`
+- Embedder/reranker default to CPU on gfx1151: MIGraphX places tensors in GTT (system RAM), making CPU faster for small models
 
 ## Endpoints
 - LiteLLM proxy: http://localhost:4000 (key: sk-llm-stack-local)
@@ -90,6 +90,7 @@ ragdeck (:8092) — admin UI for all services
 ## Health checks
 
 ```bash
+curl http://localhost:8080/health   # llama-vulkan
 curl http://localhost:8090/health   # ragpipe
 curl http://localhost:8091/health   # ragstuffer
 curl http://localhost:8093/health   # ragstuffer-mpep
@@ -134,8 +135,8 @@ RAG document sources configured in `~/.config/llm-stack/ragstack.env`:
 - ROCm 7.x required
 - `HSA_OVERRIDE_GFX_VERSION=11.5.1` required for gfx1151
 - LLM inference: Vulkan RADV via llama-vulkan container (gfx1151 optimized)
-- Embedder/reranker: CPU on gfx1151 — MIGraphX tensors land in GTT instead of VRAM on UMA APUs, CPU is faster for small models
-- **⚠️ Cold start ~3:53**: First boot takes ~3:53 for ONNX model compilation. Warm start (MXR cached): ~6 seconds (39x improvement via `ORT_MIGRAPHX_MODEL_CACHE_PATH`)
+- Embedder/reranker default to CPU on gfx1151 — MIGraphX tensors land in GTT instead of VRAM on UMA APUs, CPU is faster for small models
+- **⚠️ Cold start ~3:53** (when MIGraphX path enabled): first boot takes ~3:53 for ONNX model compilation. Warm start (MXR cached): ~6 seconds via `ORT_MIGRAPHX_MODEL_CACHE_PATH`
 - Reranker (MiniLM-L-6-v2) runs on CPU — this is expected, not a bug
 
 ## Container images
@@ -143,7 +144,7 @@ RAG document sources configured in `~/.config/llm-stack/ragstack.env`:
 - ragstuffer: ghcr.io/aclater/ragstuffer (CPU/ROCm/CUDA variants published to GHCR)
 - ragwatch: ghcr.io/aclater/ragwatch (Prometheus aggregation)
 - ragdeck: ghcr.io/aclater/ragdeck (Admin UI)
-- llama-vulkan: localhost/llama-vulkan (Vulkan RADV for gfx1151)
+- llama-vulkan: ghcr.io/aclater/llama-vulkan (Vulkan RADV for gfx1151)
 - postgres: quay.io/sclorg/postgresql-16-c9s (LiteLLM state + document store)
 - qdrant, litellm, open-webui: upstream images
 

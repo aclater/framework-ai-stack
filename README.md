@@ -10,7 +10,7 @@ Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB
 |---|---|---|---|
 | postgres | `quay.io/sclorg/postgresql-16-c9s` | 5432 | LiteLLM state + document store |
 | qdrant | `docker.io/qdrant/qdrant:v1.17.1` | 6333 | Vector search (int8 scalar quantization) |
-| llama-vulkan | `localhost/llama-vulkan:b8668` | 8080 | Qwen3.5 via Vulkan RADV (gfx1151 optimized) |
+| llama-vulkan | `ghcr.io/aclater/llama-vulkan:b8668` | 8080 | Qwen3.5 via Vulkan RADV (gfx1151 optimized) |
 | ragpipe | `ghcr.io/aclater/ragpipe:main-rocm` | 8090 | Search → hydrate → rerank → ground → cite → inject |
 | litellm | `ghcr.io/berriai/litellm:main-stable` | 4000 | OpenAI-compatible proxy |
 | open-webui | `ghcr.io/open-webui/open-webui:v0.8.12` | 3000 | Chat UI, pinned to v0.8.12 |
@@ -69,7 +69,7 @@ cp ragstack.env.example ~/.config/llm-stack/ragstack.env
   deps            install system packages via dnf
   groups          add user to render/video groups
   setup           verify GPU, configure dirs
-  pull-image      pull RamaLama ROCm image (with registry fallback)
+  pull-image      pull llama-vulkan container image from GHCR
   pull-models     download model
   install         install quadlets + enable on boot
   up              start all services
