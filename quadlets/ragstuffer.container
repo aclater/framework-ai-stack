@@ -10,14 +10,12 @@ Wants=network-online.target
 Requires=qdrant.service ragpipe.service
 
 [Container]
-# Locally built — tag with git SHA at build time:
-#   podman build -t localhost/ragstuffer:$(git rev-parse --short HEAD) .
-#   podman tag localhost/ragstuffer:$(git rev-parse --short HEAD) localhost/ragstuffer:main
-Image=localhost/ragstuffer:main
+# CI-built image from ghcr.io — source code baked in (ragstuffer#26)
+Image=ghcr.io/aclater/ragstuffer:main
 
-Volume=%h/git/ragstuffer:/app:ro,z
-Volume=%h/git/ragpipe/ragpipe/docstore.py:/app/docstore.py:ro,z
+# Service account key for Google Drive access
 Volume=%h/.config/ramalama/gdrive-sa.json:/run/secrets/gdrive-sa.json:ro,z
+# Staging directory for downloaded files
 Volume=rag-staging:/staging:Z
 
 EnvironmentFile=%h/.config/llm-stack/env
@@ -36,8 +34,6 @@ Environment=DOCSTORE_BACKEND=postgres
 Environment=RAGSTUFFER_ADMIN_PORT=8091
 
 Network=host
-
-Exec=python3.12 /app/ragstuffer.py
 
 ContainerName=ragstuffer
 
