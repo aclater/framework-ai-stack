@@ -33,7 +33,7 @@ jobs:
     name: Build & push
     runs-on: ubuntu-latest
     needs: hadolint
-    if: github.event_name != 'pull_request' || github.actor != 'dependabot[bot]'
+    # Build on all PRs (including dependabot) for validation; push only on main/tags
     steps:
       - uses: actions/checkout@v6.0.2
 
