@@ -12,26 +12,39 @@ Requires=ragpipe.service
 [Container]
 Image=ghcr.io/aclater/ragorchestrator:main
 
+ContainerName=ragorchestrator
+
 # Run as non-root user (default in UBI Python images, UID 1001)
 User=1001
 
+# Service URLs — host.containers.internal resolves to the host from inside Podman
 Environment=RAGPIPE_URL=http://host.containers.internal:8090
+Environment=RAGWATCH_URL=http://host.containers.internal:9090
+Environment=QDRANT_URL=http://host.containers.internal:6333
 Environment=RAGORCHESTRATOR_PORT=8095
 
+# Web search — disabled until TAVILY_API_KEY is configured in ragstack.env
+Environment=DISABLE_WEB_SEARCH=true
+Environment=LANGSMITH_TRACING=false
+
 # Credentials sourced from ragstack.env — never committed to the repo
-# Provides: RAGPIPE_ADMIN_TOKEN
+# Provides: RAGPIPE_ADMIN_TOKEN, DOCSTORE_URL, TAVILY_API_KEY (optional)
 EnvironmentFile=%h/.config/llm-stack/ragstack.env
 
+# Networking — needs access to all rag-suite services on host
 Network=host
-
-ContainerName=ragorchestrator
 
 # Health check
 HealthCmd=curl -sf http://127.0.0.1:8095/health
 HealthInterval=30s
-HealthTimeout=10s
+HealthTimeout=5s
 HealthRetries=3
 HealthStartPeriod=30s
+
+# Security
+NoNewPrivileges=true
+ReadOnly=true
+Tmpfs=/tmp
 
 [Service]
 Restart=on-failure
