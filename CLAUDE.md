@@ -323,3 +323,91 @@ fix(ragstuffer): deduplicate cited chunks in streaming path (refs #8)
 **Never start implementation without an issue number.**
 This ensures work is discoverable across parallel agent sessions
 without requiring conversation history.
+
+
+## Autonomous operation
+
+You are operating autonomously. Do not ask for confirmation before taking
+action. Do not prompt the user with yes/no questions. Make decisions, execute
+them, log them to GitHub issues, and move on.
+
+The only exception: if you encounter a situation that could cause irreversible
+data loss — comment on the issue explaining what you found and why you stopped,
+then stop.
+
+Autonomous decision rules — apply these without asking:
+- Tests fail after a fix: investigate, fix, push again.
+- CI failing on your branch: fix it and push.
+- Dependency missing: install it.
+- Migration needed: run it against live Postgres.
+- ragpipe needs restart: restart it, wait for healthy (warm start ~6s),
+  log the restart reason in the GitHub issue comment.
+- New bug discovered while working: create a GitHub issue for it, note it
+  in the current issue comment, continue with current task.
+- Unsure between two approaches: pick the simpler one, document reasoning
+  in the issue comment, proceed.
+- Flaky test: fix the test.
+- CI still running when task is done: wait for CI to complete before
+  moving to the next issue.
+
+Log these milestones to the GitHub issue as comments:
+- When you start: your plan and implementation approach
+- When you hit a significant obstacle and how you resolved it
+- When you make a non-obvious technical decision and why
+- When tests pass or fail (with counts)
+- When the PR is open: PR URL and CI status
+- When CI passes: confirmation and any remaining notes
+
+
+## Container and deployment standards
+
+- Use Podman, not Docker. Use rootless Podman quadlets, not docker-compose.
+- Base images: prefer Red Hat UBI (registry.access.redhat.com/ubi10/ or
+  registry.access.redhat.com/ubi9/) for all Python services.
+- Never use :latest in production quadlets — pin to specific tag or digest.
+- All containers must run as non-root (USER 1001 or equivalent).
+- All containers must have a HEALTHCHECK defined.
+- SecurityLabelDisable=true requires an inline comment explaining the specific
+  SELinux constraint that requires it and referencing the relevant ADR.
+- No bind mounts for source code in production quadlets.
+- No credentials in committed files — use ragstack.env (not committed).
+- One logical change per commit. Squash fixup commits before upstream PRs.
+
+
+## rag-suite architecture context
+
+Services and ports:
+- ragpipe         :8090  — RAG proxy, embedding, reranking, grounding, citations
+- ragstuffer      :8091  — ingestion (Drive, git, web)
+- ragstuffer-mpep :8093  — second ragstuffer instance for USPTO/MPEP collection
+- ragwatch        :9090  — Prometheus metrics aggregator
+- ragdeck         :8092  — admin UI (FastAPI + frontend)
+- Ollama/Vulkan   :8080  — LLM inference (Qwen3-32B dense Q4_K_M, ~19GB GTT)
+- Qdrant          :6333  — vector store (4 collections: personnel, nato, mpep, documents)
+- Postgres        :5432  — docstore (chunks+titles, collections, query_log partitioned)
+- LiteLLM         :4000  — model proxy
+- Open WebUI      :3000  — chat interface
+
+Key architectural decisions:
+- Collections split: personnel/nato/mpep/documents — separate Qdrant collections
+  per domain. Reranker scores improved dramatically after this split.
+- Title hydration: chunks have title column. ragpipe surfaces titles in
+  rag_metadata.cited_chunks as objects {id, title, source}. System prompt
+  instructs model to cite by title in prose while emitting [doc_id:chunk_id].
+- Citation format: [doc_id:chunk_id] e.g. [133abba5-9eeb-5a99-8a5c:2]
+  NOT [doc_id:133abba5...:chunk_id:2] — the verbose format is a bug.
+- Grounding classification: corpus | general | mixed
+- Hot-reload: POST /admin/reload-routes and POST /admin/reload-prompt
+  avoid restarts for config changes. Use these instead of restarting ragpipe.
+- MXR cache: ORT_MIGRAPHX_MODEL_CACHE_PATH env var enables caching.
+  Warm start is ~6 seconds. Cold start (empty cache) is ~3m53s.
+- LLM model: Qwen3-32B dense Q4_K_M (~19GB GTT). 32B fully activated
+  parameters. Use /nothink flag for structured output tasks to prevent
+  thinking mode consuming all output tokens.
+- Qdrant IPv4: always use curl -4 or set QDRANT__SERVICE__HOST=:: in quadlet.
+  Qdrant binds IPv4 only; Fedora resolves localhost to ::1 by default.
+- Phase 0 Ragas baseline (ragprobe PR #11):
+    Faithfulness: 0.700 | Answer Relevance: 0.843
+    Context Precision: 0.714 | Context Recall: 0.250
+  Personnel route strongest (F=0.967). MPEP/patent weakest (F=0.333).
+  CRAG implementation (Phase 1) targets MPEP improvement.
