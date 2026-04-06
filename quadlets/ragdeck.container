@@ -32,7 +32,7 @@ HealthStartPeriod=15s
 
 # Security
 NoNewPrivileges=true
-ReadOnlyRootfs=true
+ReadOnly=true
 Tmpfs=/tmp
 
 # Networking — needs access to all rag-suite services on host

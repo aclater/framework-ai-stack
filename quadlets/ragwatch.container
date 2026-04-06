@@ -26,7 +26,7 @@ HealthStartPeriod=10s
 
 # Security
 NoNewPrivileges=true
-ReadOnlyRootfs=true
+ReadOnly=true
 Tmpfs=/tmp
 
 # Networking — needs access to ragpipe and ragstuffer metrics endpoints on host
