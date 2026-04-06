@@ -10,10 +10,9 @@ Wants=network-online.target
 Requires=qdrant.service ragpipe.service
 
 [Container]
-Image=localhost/ragstuffer:main
+# Same CI-built image as ragstuffer — different collection config
+Image=ghcr.io/aclater/ragstuffer:main
 
-Volume=%h/git/ragstuffer:/app:ro,z
-Volume=%h/git/ragpipe/ragpipe/docstore.py:/app/docstore.py:ro,z
 Volume=%h/.config/ramalama/gdrive-sa.json:/run/secrets/gdrive-sa.json:ro,z
 Volume=rag-staging:/staging:Z
 
@@ -32,8 +31,6 @@ Environment=GDRIVE_FOLDER_ID=1BbOdtp9fj6LdtRWhpe9LA1TmTBvyOkAd
 Environment=RAGSTUFFER_ADMIN_PORT=8093
 
 Network=host
-
-Exec=python3.12 /app/ragstuffer.py
 
 ContainerName=ragstuffer-mpep
 
