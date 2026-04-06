@@ -1,23 +1,77 @@
-name: Containerfile lint
-
-# Both ragpipe and ragstuffer Containerfiles are linted in their own repos.
-# This workflow is retained as a placeholder for any future local Containerfiles.
+name: Container image
 
 on:
   push:
     branches: [main]
+    tags: ["v*"]
     paths:
-      - "**/Containerfile"
+      - "containers/llama-vulkan/**"
   pull_request:
     paths:
-      - "**/Containerfile"
+      - "containers/llama-vulkan/**"
 
 permissions:
   contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  # Hardcoded — github.repository is framework-ai-stack, not the image name
+  IMAGE_NAME: aclater/llama-vulkan
 
 jobs:
-  placeholder:
-    name: No local Containerfiles
+  hadolint:
+    name: Hadolint
     runs-on: ubuntu-latest
     steps:
-      - run: echo "ragpipe and ragstuffer Containerfiles linted in their own repos"
+      - uses: actions/checkout@v6.0.2
+      - uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: containers/llama-vulkan/Containerfile
+
+  build:
+    name: Build & push
+    runs-on: ubuntu-latest
+    needs: hadolint
+    # Build on all PRs (including dependabot) for validation; push only on main/tags
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4.1.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract LLAMA_CPP_TAG from Containerfile
+        id: tag
+        run: |
+          tag=$(grep '^ARG LLAMA_CPP_TAG=' containers/llama-vulkan/Containerfile | cut -d= -f2)
+          if [ -z "$tag" ]; then
+            echo "::error::LLAMA_CPP_TAG not found in Containerfile"
+            exit 1
+          fi
+          echo "llama_tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6.0.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+            type=raw,value=${{ steps.tag.outputs.llama_tag }}
+
+      - name: Build (PR) / Build & push (main/tag)
+        uses: docker/build-push-action@v7.0.0
+        with:
+          context: containers/llama-vulkan
+          file: containers/llama-vulkan/Containerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
