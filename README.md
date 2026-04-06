@@ -1,6 +1,6 @@
 # framework-ai-stack
 
-Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB unified memory). Qwen3.5-35B-A3B inference with live RAG — ragstuffer automatically imports documents from Google Drive, git repos, and web URLs into a Qdrant vector database backed by a Postgres document store. A ragpipe searches Qdrant, hydrates chunks from the document store, reranks with a cross-encoder, and injects the most relevant context into every query. All services run as rootless Podman containers managed by systemd quadlets.
+Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB unified memory). Qwen3-32B dense inference (32B fully activated per token) with live RAG — ragstuffer automatically imports documents from Google Drive, git repos, and web URLs into a Qdrant vector database backed by a Postgres document store. A ragpipe searches Qdrant, hydrates chunks from the document store, reranks with a cross-encoder, and injects the most relevant context into every query. All services run as rootless Podman containers managed by systemd quadlets.
 
 ![Architecture](architecture.svg)
 
@@ -10,7 +10,7 @@ Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB
 |---|---|---|---|
 | postgres | `quay.io/sclorg/postgresql-16-c9s` | 5432 | LiteLLM state + document store |
 | qdrant | `docker.io/qdrant/qdrant:v1.17.1` | 6333 | Vector search (int8 scalar quantization) |
-| llama-vulkan | `ghcr.io/aclater/llama-vulkan:b8668` | 8080 | Qwen3.5 via Vulkan RADV (gfx1151 optimized) |
+| llama-vulkan | `ghcr.io/aclater/llama-vulkan:b8668` | 8080 | Qwen3-32B Q4_K_M via Vulkan RADV (gfx1151) |
 | ragpipe | `ghcr.io/aclater/ragpipe:main-rocm` | 8090 | Search → hydrate → rerank → ground → cite → inject |
 | litellm | `ghcr.io/berriai/litellm:main-stable` | 4000 | OpenAI-compatible proxy |
 | open-webui | `ghcr.io/open-webui/open-webui:v0.8.12` | 3000 | Chat UI, pinned to v0.8.12 |
@@ -19,13 +19,13 @@ Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB
 | ragwatch | `ghcr.io/aclater/ragwatch:main` | 9090 | Prometheus aggregation + /metrics/summary JSON |
 | ragdeck | `ghcr.io/aclater/ragdeck:main` | 8092 | Admin UI |
 
-LLM inference runs via llama-vulkan (llama.cpp with Vulkan RADV backend on gfx1151). LiteLLM routes all aliases through ragpipe. The proxy searches Qdrant for candidate vectors (reference payloads only — no text stored in Qdrant), hydrates chunk text from the Postgres document store, reranks with cross-encoder, and injects the top results as context before forwarding to the model. Documents from Google Drive, git repos, and web URLs are automatically ingested — no model restart required.
+LLM inference runs via llama-vulkan (llama.cpp with Vulkan RADV backend on gfx1151). The model is Qwen3-32B (dense, Q4_K_M, ~19 GB) — a fully dense model with 32B parameters all activated per token. Dense models provide better instruction following and faster per-token generation than MoE models at equivalent activated parameter counts. Thinking mode should be disabled for RAG queries to avoid slow chain-of-thought on retrieval. All model weights and KV cache live in GTT (system RAM mapped for GPU access) — gfx1151 has no discrete VRAM, this is the intended architecture for this APU. LiteLLM routes all aliases through ragpipe. The proxy searches Qdrant for candidate vectors (reference payloads only — no text stored in Qdrant), hydrates chunk text from the Postgres document store, reranks with cross-encoder, and injects the top results as context before forwarding to the model. Documents from Google Drive, git repos, and web URLs are automatically ingested — no model restart required.
 
 ### GPU requirements
 
 - **GPU**: AMD Ryzen AI Max+ 395 (gfx1151) with ROCm 7.x
 - **Required env**: `HSA_OVERRIDE_GFX_VERSION=11.5.1`
-- **LLM inference**: Vulkan RADV via llama-vulkan container — avoids GTT issues that ROCm HIP has on gfx1151 UMA APUs
+- **LLM inference**: Vulkan RADV via llama-vulkan container — all model weights and KV cache reside in GTT (system RAM mapped for GPU access)
 - **Embedder/reranker**: CPU on gfx1151 — MIGraphX tensors land in GTT (not VRAM), CPU is faster for models this small
 - **⚠️ Cold start**: ragpipe takes ~3:53 on first boot while ONNX models compile. Warm start (MXR cached): ~6 seconds (39x improvement)
 
@@ -33,8 +33,9 @@ LLM inference runs via llama-vulkan (llama.cpp with Vulkan RADV backend on gfx11
 
 - Fedora 43
 - AMD Ryzen AI Max+ 395 (gfx1151) or similar AMD iGPU/dGPU with ROCm support
-- ~25 GB free disk space for the model
-- **BIOS: UMA frame buffer set to 64 GB — model size depends on auto-tuner selection — run tune to optimize**
+- ~25 GB free disk space for the model (Qwen3-32B Q4_K_M, ~19 GB)
+- **BIOS: UMA frame buffer set to auto — 125 GB GTT available (128 GB unified memory)**
+- ~30 GB runtime memory for model + KV cache, ~90 GB GTT free for services
 
 ## First-time setup
 
@@ -128,7 +129,7 @@ export OPENAI_API_BASE=http://localhost:4000
 export OPENAI_API_KEY=sk-llm-stack-local
 ```
 
-Available model aliases (all route to Qwen3.5-35B-A3B on :8080):
+Available model aliases (all route to Qwen3-32B on :8080):
 
 | Alias | Use case |
 |---|---|
@@ -241,9 +242,9 @@ bash tests/run-tests.sh             # shell tests
 
 3. **LiteLLM supply chain:** LiteLLM is pinned to `main-stable` after a supply chain incident. See ADR-009. Do not upgrade without verifying the release is clean.
 
-4. **UMA frame buffer:** BIOS must have UMA frame buffer set to 64 GB for the model to fit in unified memory. Without this, the model will not load.
+4. **UMA frame buffer:** BIOS must have UMA frame buffer set to auto. The Qwen3-32B model requires ~19 GB + KV cache in GTT. gfx1151 has no discrete VRAM — all model inference uses GTT (system RAM mapped for GPU access).
 
-5. **gfx1151 Vulkan required:** The llama-vulkan container uses Vulkan RADV which is required for proper VRAM management on gfx1151. Do not replace with ROCm HIP images — they have known GTT issues on UMA APUs.
+5. **gfx1151 Vulkan preferred:** The llama-vulkan container uses Vulkan RADV which provides faster model loading and inference on gfx1151. ROCm HIP also uses GTT but has significantly slower tensor loading for large models on this APU (see issue #47).
 
 ## Acknowledgements
 

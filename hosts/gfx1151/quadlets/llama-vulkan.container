@@ -1,28 +1,41 @@
 # ~/.config/containers/systemd/llama-vulkan.container
-# Qwen3.5-35B-A3B via llama.cpp Vulkan (RADV) on gfx1151
+# Qwen3-32B dense Q4_K_M via llama.cpp Vulkan (RADV) on gfx1151
 # Managed by: systemctl --user [start|stop|restart|status] llama-vulkan
+#
+# Model: Qwen3-32B (dense, 32B fully activated per token)
+# Quant: Q4_K_M (~19 GB single GGUF)
+# Memory requirements:
+#   - Model footprint: ~19 GB Q4_K_M
+#   - KV cache (f16, 65536 ctx, 2 slots): ~4-8 GB
+#   - Total LLM memory: ~25-30 GB
+#   - Hardware: 125 GB GTT (128 GB unified memory, BIOS UMA auto)
+#   - All model weights and KV cache live in GTT (system RAM mapped for
+#     GPU access). gfx1151 has no discrete VRAM — this is the intended
+#     architecture for this APU, not a fallback.
+# Refs: issue #47
 
 [Unit]
-Description=llama-server Qwen3.5-35B-A3B (Vulkan/gfx1151)
+Description=llama-server Qwen3-32B Q4_K_M (Vulkan/gfx1151)
 After=local-fs.target network-online.target
 Wants=network-online.target
 
 [Container]
 # Pin to a build tag — update: podman pull ghcr.io/aclater/llama-vulkan:<new-tag>
-Image=ghcr.io/aclater/llama-vulkan:b8668
+# Uses localhost image built/tagged locally; GHCR is the upstream source
+Image=localhost/llama-vulkan:b8668
 
 # DRI render node only — no /dev/kfd (no ROCm compute stack needed)
 # SELinux container_t can access /dev/dri/renderD128 natively — no
 # SecurityLabelDisable needed (verified on Fedora 43)
 AddDevice=-/dev/dri
 
-# Model bind-mount
+# Model bind-mount — single file for dense 32B model
 Mount=type=bind,src=MODEL_PATH_PLACEHOLDER,target=/mnt/models/model.file,ro,Z
 
 # Vulkan on AMD does NOT support:
 #   - flash attention (NVIDIA-only via VK_NV_cooperative_matrix2)
 #   - KV cache quantization (requires FA)
-# Use f16 KV cache (default). On 128 GB UMA this is acceptable.
+# Use f16 KV cache (default). With ~19 GB model on 125 GB GTT this is comfortable.
 # --parallel 2: doubles per-slot context (32K), halves KV cache overhead
 # --ctx-size 65536: 32K per slot is sufficient for RAG (typically <8K prompt)
 # ENTRYPOINT is llama-server — Exec provides arguments only
