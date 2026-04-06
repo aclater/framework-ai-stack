@@ -5,14 +5,15 @@ Local AI stack for Fedora 43. LLM inference with live RAG from Google Drive, git
 ## Stack services and ports
 
 | Service | Port | Image | Notes |
-|---------|------|-------|-------|
+|--------|------|-------|-------|
 | open-webui | 3000 | ghcr.io/open-webui/open-webui:v0.8.12 | Chat UI |
 | litellm | 4000 | ghcr.io/berriai/litellm:main-stable | OpenAI-compatible proxy |
 | ragpipe | 8090 | ghcr.io/aclater/ragpipe:main-rocm | RAG proxy + semantic routing |
-| ragstuffer | 8091 | localhost/ragstuffer:main | Document ingestion |
-| ragwatch | 9090 | localhost/ragwatch:main | Prometheus aggregation |
-| ragdeck | 8095 | localhost/ragdeck:main | Admin UI (scaffold) |
-| ramalama | 8080 | quay.io/ramalama/rocm:latest | Qwen3.5-35B-A3B |
+| ragstuffer | 8091 | ghcr.io/aclater/ragstuffer:main | Document ingestion |
+| ragstuffer-mpep | 8093 | ghcr.io/aclater/ragstuffer:main | USPTO/MPEP patent collection |
+| ragwatch | 9090 | ghcr.io/aclater/ragwatch:main | Prometheus aggregation |
+| ragdeck | 8092 | ghcr.io/aclater/ragdeck:main | Admin UI |
+| llama-vulkan | 8080 | ghcr.io/aclater/llama-vulkan:b8668 | Qwen3.5-35B-A3B via Vulkan RADV |
 | qdrant | 6333 | docker.io/qdrant/qdrant:v1.17.1 | Vector search |
 | postgres | 5432 | quay.io/sclorg/postgresql-16-c9s | Document store + LiteLLM state |
 
@@ -32,26 +33,30 @@ Per-GPU-profile overrides live in `hosts/<profile>/quadlets/` and are overlaid d
 
 ## Architecture
 ```
-clients → LiteLLM (:4000) → ragpipe (:8090) → ramalama (:8080)
-                                  │
-                          Qdrant search (:6333)
-                                  │
-                          docstore hydration (Postgres :5432)
-                                  │
-                          reranker (MiniLM-L-6-v2, CPU)
-                                  │
-                          grounding (citation labels + system prompt)
-                                  │
-                          forward to model → post-process response
-                                  │
-                          parse citations → validate → classify → audit
+clients → LiteLLM (:4000) → ragpipe (:8090) → llama-vulkan (:8080)
+                                   │
+                           Qdrant search (:6333)
+                                   │
+                           docstore hydration (Postgres :5432)
+                                   │
+                           reranker (MiniLM-L-6-v2, CPU)
+                                   │
+                           grounding (citation labels + system prompt)
+                                   │
+                           forward to model → post-process response
+                                   │
+                           parse citations → validate → classify → audit
 
 ragstuffer (polls Drive, git, web → extract → chunk → embed)
       │
       ├→ docstore (Postgres :5432) — chunks + titles
       └→ Qdrant (:6333) — vectors + reference payloads
 
+ragstuffer-mpep (:8093) — USPTO/MPEP patent collection
+
 ragwatch (:9090) — scrapes ragpipe (:8090/metrics) + ragstuffer (:8091/metrics)
+
+ragdeck (:8092) — admin UI for all services
 ```
 
 ## Key design decisions
@@ -67,24 +72,30 @@ ragwatch (:9090) — scrapes ragpipe (:8090/metrics) + ragstuffer (:8091/metrics
 - KV cache type and model quantization selected by auto-tuner (see tune.conf)
 - Empty retrieval is not an error — model answers from general knowledge with prefix
 - Audit log captures grounding decisions without logging text content
-- MIGraphX for AMD GPU inference (gfx1151 only) — ~3 min startup
-- Reranker runs on CPU (MiniLM-L-6-v2 fails on MIGraphX at inference)
+- LLM inference: Vulkan RADV via llama-vulkan (gfx1151 optimized)
+- MXR cache (when MIGraphX path enabled): cold start ~3:53, warm start ~6s via `ORT_MIGRAPHX_MODEL_CACHE_PATH`
+- Embedder/reranker default to CPU on gfx1151: MIGraphX places tensors in GTT (system RAM), making CPU faster for small models
 
 ## Endpoints
 - LiteLLM proxy: http://localhost:4000 (key: sk-llm-stack-local)
 - ragpipe:     http://localhost:8090 (search + hydrate + rerank + ground + inject)
-- ramalama:     http://localhost:8080 (plain model)
+- llama-vulkan: http://localhost:8080 (plain model via Vulkan)
 - Qdrant:        http://localhost:6333
 - Open WebUI:    http://localhost:3000
 - ragwatch:      http://localhost:9090 (metrics + /metrics/summary)
 - ragstuffer:    http://localhost:8091 (admin + metrics)
+- ragstuffer-mpep: http://localhost:8093 (admin + metrics)
+- ragdeck:      http://localhost:8092 (admin UI)
 
 ## Health checks
 
 ```bash
+curl http://localhost:8080/health   # llama-vulkan
 curl http://localhost:8090/health   # ragpipe
 curl http://localhost:8091/health   # ragstuffer
+curl http://localhost:8093/health   # ragstuffer-mpep
 curl http://localhost:9090/health   # ragwatch (degraded if upstream down)
+curl http://localhost:8092/health   # ragdeck
 curl http://localhost:4000/health   # litellm
 curl http://localhost:6333/readyz   # qdrant
 ```
@@ -95,12 +106,14 @@ curl http://localhost:6333/readyz   # qdrant
 ./llm-stack.sh logs <model|proxy|webui>
 journalctl --user -u ragpipe -f
 journalctl --user -u ragstuffer -f
+journalctl --user -u ragstuffer-mpep -f
 journalctl --user -u ragwatch -f
+journalctl --user -u ragdeck -f
 journalctl --user -u qdrant -f
 ```
 
 ## Model aliases
-All aliases route through ragpipe → Qwen3.5-35B-A3B on :8080:
+All aliases route through ragpipe → Qwen3.5-35B-A3B on llama-vulkan (:8080):
 - default: general use
 - reasoning: multi-step problems, chain-of-thought
 - code: completion, debugging, generation
@@ -117,22 +130,23 @@ RAG document sources configured in `~/.config/llm-stack/ragstack.env`:
 - `REPO_SOURCES` — JSON list: `[{"url": "https://...", "glob": "**/*.md"}]`
 - `WEB_SOURCES` — JSON list: `["https://example.com/docs"]`
 
-## GPU requirements (MIGraphX on gfx1151)
+## GPU requirements (Vulkan on gfx1151)
 
 - ROCm 7.x required
 - `HSA_OVERRIDE_GFX_VERSION=11.5.1` required for gfx1151
-- MIGraphXExecutionProvider only — ROCMExecutionProvider is ABI-incompatible with ROCm 7.x
-- **⚠️ ~3 minute startup**: MIGraphX compiles the inference graph at first query
+- LLM inference: Vulkan RADV via llama-vulkan container (gfx1151 optimized)
+- Embedder/reranker default to CPU on gfx1151 — MIGraphX tensors land in GTT instead of VRAM on UMA APUs, CPU is faster for small models
+- **⚠️ Cold start ~3:53** (when MIGraphX path enabled): first boot takes ~3:53 for ONNX model compilation. Warm start (MXR cached): ~6 seconds via `ORT_MIGRAPHX_MODEL_CACHE_PATH`
 - Reranker (MiniLM-L-6-v2) runs on CPU — this is expected, not a bug
 
 ## Container images
 - ragpipe: ghcr.io/aclater/ragpipe (UBI9/python-311, ONNX models baked in)
-- ragstuffer: localhost/ragstuffer — GPU-aware, auto-selected by `llm-stack.sh build`:
-  - CPU: UBI10 (default, delegates embedding to ragpipe)
-  - ROCm: rocm/pytorch (AMD GPU embedding via sentence-transformers)
-  - CUDA: pytorch/pytorch (NVIDIA GPU embedding via sentence-transformers)
-- postgres: sclorg/postgresql-16-c9s (LiteLLM state + document store)
-- qdrant, litellm, ramalama, open-webui: upstream images
+- ragstuffer: ghcr.io/aclater/ragstuffer (CPU/ROCm/CUDA variants published to GHCR)
+- ragwatch: ghcr.io/aclater/ragwatch (Prometheus aggregation)
+- ragdeck: ghcr.io/aclater/ragdeck (Admin UI)
+- llama-vulkan: ghcr.io/aclater/llama-vulkan (Vulkan RADV for gfx1151)
+- postgres: quay.io/sclorg/postgresql-16-c9s (LiteLLM state + document store)
+- qdrant, litellm, open-webui: upstream images
 
 ## Documentation
 - [Architecture](docs/architecture.md) — system design, data flow, components
