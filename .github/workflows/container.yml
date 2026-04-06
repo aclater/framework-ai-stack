@@ -49,6 +49,10 @@ jobs:
         id: tag
         run: |
           tag=$(grep '^ARG LLAMA_CPP_TAG=' containers/llama-vulkan/Containerfile | cut -d= -f2)
+          if [ -z "$tag" ]; then
+            echo "::error::LLAMA_CPP_TAG not found in Containerfile"
+            exit 1
+          fi
           echo "llama_tag=$tag" >> "$GITHUB_OUTPUT"
 
       - name: Extract metadata
