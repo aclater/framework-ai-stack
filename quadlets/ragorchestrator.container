@@ -22,6 +22,9 @@ Environment=RAGPIPE_URL=http://host.containers.internal:8090
 Environment=RAGWATCH_URL=http://host.containers.internal:9090
 Environment=QDRANT_URL=http://host.containers.internal:6333
 Environment=RAGORCHESTRATOR_PORT=8095
+Environment=MODEL_URL=http://host.containers.internal:8080
+Environment=MODEL_NAME=model.file
+Environment=RAGWATCH_URL=http://host.containers.internal:9090
 
 # Web search — disabled until TAVILY_API_KEY is configured in ragstack.env
 Environment=DISABLE_WEB_SEARCH=true
@@ -34,8 +37,8 @@ EnvironmentFile=%h/.config/llm-stack/ragstack.env
 # Networking — needs access to all rag-suite services on host
 Network=host
 
-# Health check
-HealthCmd=curl -sf http://127.0.0.1:8095/health
+# Health check — UBI10 minimal lacks curl, use Python
+HealthCmd=python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8095/health')"
 HealthInterval=30s
 HealthTimeout=5s
 HealthRetries=3
