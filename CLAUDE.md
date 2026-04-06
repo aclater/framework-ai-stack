@@ -13,7 +13,7 @@ Local AI stack for Fedora 43. LLM inference with live RAG from Google Drive, git
 | ragstuffer-mpep | 8093 | ghcr.io/aclater/ragstuffer:main | USPTO/MPEP patent collection |
 | ragwatch | 9090 | ghcr.io/aclater/ragwatch:main | Prometheus aggregation |
 | ragdeck | 8092 | ghcr.io/aclater/ragdeck:main | Admin UI |
-| llama-vulkan | 8080 | ghcr.io/aclater/llama-vulkan:b8668 | Qwen3.5-35B-A3B via Vulkan RADV |
+| llama-vulkan | 8080 | ghcr.io/aclater/llama-vulkan:b8668 | Qwen3.5-122B-A10B Q4_K_M via Vulkan RADV |
 | qdrant | 6333 | docker.io/qdrant/qdrant:v1.17.1 | Vector search |
 | postgres | 5432 | quay.io/sclorg/postgresql-16-c9s | Document store + LiteLLM state |
 
@@ -113,7 +113,7 @@ journalctl --user -u qdrant -f
 ```
 
 ## Model aliases
-All aliases route through ragpipe → Qwen3.5-35B-A3B on llama-vulkan (:8080):
+All aliases route through ragpipe → Qwen3.5-122B-A10B-Instruct on llama-vulkan (:8080):
 - default: general use
 - reasoning: multi-step problems, chain-of-thought
 - code: completion, debugging, generation

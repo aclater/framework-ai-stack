@@ -74,6 +74,10 @@ else
         MODEL_SIZE_HINT="~6 GB"
         MODEL_DESC="Qwen3.5-9B Q4"
     fi
+    # Split GGUF support — set by tune.conf for models with multiple shards
+    MODEL_SPLIT="${MODEL_SPLIT:-false}"
+    MODEL_SUBFOLDER="${MODEL_SUBFOLDER:-}"
+    MODEL_FIRST_SHARD="${MODEL_FIRST_SHARD:-$MODEL_FILE}"
     TUNE_CTX_SIZE=32768
     TUNE_PARALLEL=2
     TUNE_THREADS=$(nproc)
@@ -667,7 +671,28 @@ cmd_pull_models() {
     header "Pulling model ($MODEL_SIZE_HINT)"
     log "$MODEL_DESC ($MODEL_FILE)..."
 
-    if command -v ramalama &>/dev/null; then
+    if [[ "$MODEL_SPLIT" == "true" && -n "$MODEL_SUBFOLDER" ]]; then
+        # Split GGUF — multiple shards in a subfolder, use huggingface-cli
+        local model_dir="$HOME/.local/share/llm-models/${MODEL_SUBFOLDER}"
+        mkdir -p "$model_dir"
+        log "Split GGUF detected — downloading $MODEL_SUBFOLDER/ from $MODEL_REPO"
+        python3 -c "
+from huggingface_hub import snapshot_download
+snapshot_download(
+    repo_id='$MODEL_REPO',
+    allow_patterns='${MODEL_SUBFOLDER}/*.gguf',
+    local_dir='$model_dir',
+)
+"
+        # Move shards to top level if huggingface-cli created a nested subfolder
+        if [[ -d "$model_dir/$MODEL_SUBFOLDER" ]]; then
+            mv "$model_dir/$MODEL_SUBFOLDER"/*.gguf "$model_dir/" 2>/dev/null || true
+            rmdir "$model_dir/$MODEL_SUBFOLDER" 2>/dev/null || true
+        fi
+        local shard_count
+        shard_count=$(find "$model_dir" -maxdepth 1 -name "*.gguf" -type f | wc -l)
+        ok "Downloaded $shard_count GGUF shards to $model_dir"
+    elif command -v ramalama &>/dev/null; then
         ramalama pull "hf://$MODEL_REPO/$MODEL_FILE"
     else
         local model_dir="$HOME/.local/share/llm-models"
@@ -679,15 +704,22 @@ cmd_pull_models() {
     echo ""
 
     log "Setting SELinux labels on model files..."
-    local label_count
+    local label_count=0
     label_count=$(find "$HOME/.local/share/ramalama/store" -name "*.gguf" -type f -print0 2>/dev/null \
         | xargs -0 --no-run-if-empty chcon -t container_ro_file_t -l s0 -v 2>/dev/null | wc -l)
+    label_count=$(( label_count + $(find "$HOME/.local/share/llm-models" -name "*.gguf" -type f -print0 2>/dev/null \
+        | xargs -0 --no-run-if-empty chcon -t container_ro_file_t -l s0 -v 2>/dev/null | wc -l) ))
     if [[ "$label_count" -gt 0 ]]; then
         ok "SELinux labels set on $label_count .gguf files"
     fi
 
     header "Model pulled"
-    ramalama list
+    if command -v ramalama &>/dev/null; then
+        ramalama list 2>/dev/null || true
+    fi
+    if [[ "$MODEL_SPLIT" == "true" ]]; then
+        du -sh "$HOME/.local/share/llm-models/${MODEL_SUBFOLDER}" 2>/dev/null || true
+    fi
     echo ""
     ok "Next: ./llm-stack.sh install"
 }
@@ -754,40 +786,48 @@ _resolve_model_path() {
 cmd_install() {
     log "Resolving model paths..."
 
-    # Model path derived from auto-detected GPU/VRAM
-    declare -A MODEL_STORE_PATH=(
-        [ramalama]="huggingface/$MODEL_REPO/$MODEL_FILE"
-    )
-    declare -A MODEL_FILENAME=(
-        [ramalama]="$MODEL_FILE"
-    )
+    local resolved=""
 
-    local missing=()
-    # shellcheck disable=SC2043
-    for unit in ramalama; do
-        local resolved
-        resolved=$(_resolve_model_path "${MODEL_STORE_PATH[$unit]}" "${MODEL_FILENAME[$unit]}")
-        # Also check ~/.local/share/llm-models/ for non-ramalama installs
-        if [[ -z "$resolved" ]]; then
-            resolved=$(find "$HOME/.local/share/llm-models" -name "${MODEL_FILENAME[$unit]}" -type f 2>/dev/null | head -1)
+    if [[ "$MODEL_SPLIT" == "true" && -n "$MODEL_SUBFOLDER" ]]; then
+        # Split GGUF — resolve to the directory containing shards
+        local split_dir="$HOME/.local/share/llm-models/${MODEL_SUBFOLDER}"
+        if [[ -d "$split_dir" ]] && [[ -f "$split_dir/$MODEL_FIRST_SHARD" ]]; then
+            resolved="$split_dir"
+            ok "Resolved split GGUF → $resolved ($MODEL_FIRST_SHARD)"
         fi
-        if [[ -z "$resolved" ]]; then
-            warn "Model not found for $unit — run './llm-stack.sh pull-models' first"
-            missing+=("$unit")
-        else
-            ok "Resolved $unit → $resolved"
-        fi
-    done
+    fi
 
-    [[ ${#missing[@]} -gt 0 ]] && fail "Missing models: ${missing[*]}"
+    if [[ -z "$resolved" ]]; then
+        # Single-file GGUF — check ramalama store, then llm-models/
+        declare -A MODEL_STORE_PATH=(
+            [ramalama]="huggingface/$MODEL_REPO/$MODEL_FILE"
+        )
+        declare -A MODEL_FILENAME=(
+            [ramalama]="$MODEL_FILE"
+        )
+        resolved=$(_resolve_model_path "${MODEL_STORE_PATH[ramalama]}" "${MODEL_FILENAME[ramalama]}")
+        if [[ -z "$resolved" ]]; then
+            resolved=$(find "$HOME/.local/share/llm-models" -name "${MODEL_FILENAME[ramalama]}" -type f 2>/dev/null | head -1)
+        fi
+        if [[ -n "$resolved" ]]; then
+            ok "Resolved model → $resolved"
+        fi
+    fi
+
+    if [[ -z "$resolved" ]]; then
+        warn "Model not found — run './llm-stack.sh pull-models' first"
+        fail "Missing model: $MODEL_DESC"
+    fi
 
     # Fix SELinux labels on model files so containers can bind-mount them.
     # container_ro_file_t with no MCS categories (s0) avoids label mismatches
     # even when SecurityLabelDisable=true strips the container's label.
     log "Setting SELinux labels on model files..."
-    local label_count
+    local label_count=0
     label_count=$(find "$HOME/.local/share/ramalama/store" -name "*.gguf" -type f -print0 2>/dev/null \
         | xargs -0 --no-run-if-empty chcon -t container_ro_file_t -l s0 -v 2>/dev/null | wc -l)
+    label_count=$(( label_count + $(find "$HOME/.local/share/llm-models" -name "*.gguf" -type f -print0 2>/dev/null \
+        | xargs -0 --no-run-if-empty chcon -t container_ro_file_t -l s0 -v 2>/dev/null | wc -l) ))
     if [[ "$label_count" -gt 0 ]]; then
         ok "SELinux labels set on $label_count .gguf files"
     fi
@@ -803,35 +843,48 @@ cmd_install() {
         cp "$HOST_QUADLET_SRC"/*.volume    "$QUADLET_DIR"/ 2>/dev/null || true
     fi
 
-    # shellcheck disable=SC2043
-    for unit in ramalama; do
-        local resolved
-        resolved=$(_resolve_model_path "${MODEL_STORE_PATH[$unit]}" "${MODEL_FILENAME[$unit]}")
-        local quadlet="$QUADLET_DIR/$unit.container"
-        sed -i "s|src=MODEL_PATH_PLACEHOLDER|src=$resolved|" "$quadlet"
+    # Template model path and filename into the LLM quadlet
+    # On gfx1151 this is llama-vulkan, otherwise ramalama
+    local llm_unit="ramalama"
+    [[ "$GPU_PROFILE" == "gfx1151" ]] && llm_unit="llama-vulkan"
+    local quadlet="$QUADLET_DIR/$llm_unit.container"
 
-        # Template the Exec line from tune.conf if available
-        if [[ -f "$TUNE_CONF" ]]; then
-            local exec_line="llama-server --model /mnt/models/model.file --host 0.0.0.0 --port 8080"
-            exec_line+=" --ctx-size ${TUNE_CTX_SIZE:-32768}"
-            exec_line+=" --n-gpu-layers 999"
-            exec_line+=" --threads ${TUNE_THREADS:-16}"
-            exec_line+=" --parallel ${TUNE_PARALLEL:-2}"
+    if [[ "$MODEL_SPLIT" == "true" ]]; then
+        # Split GGUF: mount the directory, template first shard filename
+        sed -i "s|src=MODEL_PATH_PLACEHOLDER|src=$resolved|" "$quadlet"
+        sed -i "s|MODEL_FILE_PLACEHOLDER|$MODEL_FIRST_SHARD|" "$quadlet"
+    else
+        # Single file: mount the file directly
+        sed -i "s|src=MODEL_PATH_PLACEHOLDER|src=$resolved|" "$quadlet"
+        sed -i "s|MODEL_FILE_PLACEHOLDER|model.file|" "$quadlet"
+    fi
+
+    # Template the Exec line from tune.conf if available
+    if [[ -f "$TUNE_CONF" ]]; then
+        local model_target="/mnt/models/model.file"
+        [[ "$MODEL_SPLIT" == "true" ]] && model_target="/mnt/models/$MODEL_FIRST_SHARD"
+        local exec_line="--model $model_target --host 0.0.0.0 --port 8080"
+        exec_line+=" --ctx-size ${TUNE_CTX_SIZE:-32768}"
+        exec_line+=" --n-gpu-layers 999"
+        exec_line+=" --threads ${TUNE_THREADS:-16}"
+        exec_line+=" --parallel ${TUNE_PARALLEL:-2}"
+        # Vulkan does not support flash attention or KV cache quantization
+        if [[ "$GPU_PROFILE" != "gfx1151" ]]; then
             exec_line+=" --flash-attn ${TUNE_FLASH_ATTN:-on}"
             exec_line+=" --cache-type-k ${TUNE_CACHE_TYPE_K:-q4_0}"
             exec_line+=" --cache-type-v ${TUNE_CACHE_TYPE_V:-q4_0}"
-            exec_line+=" --batch-size ${TUNE_BATCH_SIZE:-2048}"
-            exec_line+=" --ubatch-size ${TUNE_UBATCH_SIZE:-512}"
-            [[ -n "${TUNE_MLOCK:-}" ]] && exec_line+=" $TUNE_MLOCK"
-            exec_line+=" --jinja"
-            [[ -n "${TUNE_EXTRA_ARGS:-}" ]] && exec_line+=" $TUNE_EXTRA_ARGS"
-            # Replace the Exec line and remove any continuation lines
-            # (quadlet files may have multi-line Exec= with \ continuations)
-            sed -i '/^Exec=/,/[^\\]$/{/^Exec=/!d}' "$quadlet"
-            sed -i "s|^Exec=.*|Exec=$exec_line|" "$quadlet"
-            ok "Templated Exec line from tune.conf"
         fi
-    done
+        exec_line+=" --batch-size ${TUNE_BATCH_SIZE:-2048}"
+        exec_line+=" --ubatch-size ${TUNE_UBATCH_SIZE:-512}"
+        [[ -n "${TUNE_MLOCK:-}" ]] && exec_line+=" $TUNE_MLOCK"
+        exec_line+=" --jinja"
+        [[ -n "${TUNE_EXTRA_ARGS:-}" ]] && exec_line+=" $TUNE_EXTRA_ARGS"
+        # Replace the Exec line and remove any continuation lines
+        # (quadlet files may have multi-line Exec= with \ continuations)
+        sed -i '/^Exec=/,/[^\\]$/{/^Exec=/!d}' "$quadlet"
+        sed -i "s|^Exec=.*|Exec=$exec_line|" "$quadlet"
+        ok "Templated Exec line from tune.conf"
+    fi
 
     systemctl --user daemon-reload
 

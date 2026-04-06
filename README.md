@@ -1,6 +1,6 @@
 # framework-ai-stack
 
-Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB unified memory). Qwen3.5-35B-A3B inference with live RAG — ragstuffer automatically imports documents from Google Drive, git repos, and web URLs into a Qdrant vector database backed by a Postgres document store. A ragpipe searches Qdrant, hydrates chunks from the document store, reranks with a cross-encoder, and injects the most relevant context into every query. All services run as rootless Podman containers managed by systemd quadlets.
+Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB unified memory). Qwen3.5-122B-A10B-Instruct inference (MoE, 122B total / 10B activated per token) with live RAG — ragstuffer automatically imports documents from Google Drive, git repos, and web URLs into a Qdrant vector database backed by a Postgres document store. A ragpipe searches Qdrant, hydrates chunks from the document store, reranks with a cross-encoder, and injects the most relevant context into every query. All services run as rootless Podman containers managed by systemd quadlets.
 
 ![Architecture](architecture.svg)
 
@@ -10,7 +10,7 @@ Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB
 |---|---|---|---|
 | postgres | `quay.io/sclorg/postgresql-16-c9s` | 5432 | LiteLLM state + document store |
 | qdrant | `docker.io/qdrant/qdrant:v1.17.1` | 6333 | Vector search (int8 scalar quantization) |
-| llama-vulkan | `ghcr.io/aclater/llama-vulkan:b8668` | 8080 | Qwen3.5 via Vulkan RADV (gfx1151 optimized) |
+| llama-vulkan | `ghcr.io/aclater/llama-vulkan:b8668` | 8080 | Qwen3.5-122B-A10B Q4_K_M via Vulkan RADV (gfx1151) |
 | ragpipe | `ghcr.io/aclater/ragpipe:main-rocm` | 8090 | Search → hydrate → rerank → ground → cite → inject |
 | litellm | `ghcr.io/berriai/litellm:main-stable` | 4000 | OpenAI-compatible proxy |
 | open-webui | `ghcr.io/open-webui/open-webui:v0.8.12` | 3000 | Chat UI, pinned to v0.8.12 |
@@ -19,7 +19,7 @@ Local AI stack for Fedora 43 on the Framework Desktop (Ryzen AI Max+ 395, 128 GB
 | ragwatch | `ghcr.io/aclater/ragwatch:main` | 9090 | Prometheus aggregation + /metrics/summary JSON |
 | ragdeck | `ghcr.io/aclater/ragdeck:main` | 8092 | Admin UI |
 
-LLM inference runs via llama-vulkan (llama.cpp with Vulkan RADV backend on gfx1151). LiteLLM routes all aliases through ragpipe. The proxy searches Qdrant for candidate vectors (reference payloads only — no text stored in Qdrant), hydrates chunk text from the Postgres document store, reranks with cross-encoder, and injects the top results as context before forwarding to the model. Documents from Google Drive, git repos, and web URLs are automatically ingested — no model restart required.
+LLM inference runs via llama-vulkan (llama.cpp with Vulkan RADV backend on gfx1151). The model is Qwen3.5-122B-A10B-Instruct (Q4_K_M, ~76.5 GB, split across 3 GGUF shards) — a mixture-of-experts model with 122B total parameters and 10B activated per token. Thinking mode should be disabled for RAG queries to avoid slow chain-of-thought on retrieval. LiteLLM routes all aliases through ragpipe. The proxy searches Qdrant for candidate vectors (reference payloads only — no text stored in Qdrant), hydrates chunk text from the Postgres document store, reranks with cross-encoder, and injects the top results as context before forwarding to the model. Documents from Google Drive, git repos, and web URLs are automatically ingested — no model restart required.
 
 ### GPU requirements
 
@@ -33,8 +33,9 @@ LLM inference runs via llama-vulkan (llama.cpp with Vulkan RADV backend on gfx11
 
 - Fedora 43
 - AMD Ryzen AI Max+ 395 (gfx1151) or similar AMD iGPU/dGPU with ROCm support
-- ~25 GB free disk space for the model
-- **BIOS: UMA frame buffer set to 64 GB — model size depends on auto-tuner selection — run tune to optimize**
+- ~80 GB free disk space for the model (Qwen3.5-122B-A10B Q4_K_M, 3 GGUF shards)
+- **BIOS: UMA frame buffer set to auto — 125 GB GTT required (128 GB unified memory)**
+- ~100 GB runtime memory: ~76.5 GB model + ~4-8 GB KV cache + ~16 GB services
 
 ## First-time setup
 
@@ -128,7 +129,7 @@ export OPENAI_API_BASE=http://localhost:4000
 export OPENAI_API_KEY=sk-llm-stack-local
 ```
 
-Available model aliases (all route to Qwen3.5-35B-A3B on :8080):
+Available model aliases (all route to Qwen3.5-122B-A10B-Instruct on :8080):
 
 | Alias | Use case |
 |---|---|
@@ -241,7 +242,7 @@ bash tests/run-tests.sh             # shell tests
 
 3. **LiteLLM supply chain:** LiteLLM is pinned to `main-stable` after a supply chain incident. See ADR-009. Do not upgrade without verifying the release is clean.
 
-4. **UMA frame buffer:** BIOS must have UMA frame buffer set to 64 GB for the model to fit in unified memory. Without this, the model will not load.
+4. **UMA frame buffer:** BIOS must have UMA frame buffer set to auto for the 122B model to fit. The model requires ~76.5 GB + KV cache (~85 GB total) in unified memory. Without sufficient GTT, the model will not load.
 
 5. **gfx1151 Vulkan required:** The llama-vulkan container uses Vulkan RADV which is required for proper VRAM management on gfx1151. Do not replace with ROCm HIP images — they have known GTT issues on UMA APUs.
 
