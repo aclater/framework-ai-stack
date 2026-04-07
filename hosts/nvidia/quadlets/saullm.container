@@ -35,7 +35,7 @@ Exec=llama-server --model /mnt/models/model.file --host 0.0.0.0 --port 8081 \
 ContainerName=saullm
 PublishPort=8081:8081
 
-HealthCmd=curl -sf http://127.0.0.1:8081/health
+HealthCmd=python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health')"
 HealthInterval=30s
 HealthTimeout=10s
 HealthRetries=3

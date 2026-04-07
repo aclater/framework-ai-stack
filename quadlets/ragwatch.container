@@ -18,7 +18,7 @@ PublishPort=9090:9090
 EnvironmentFile=%h/.config/llm-stack/ragstack.env
 
 # Health check
-HealthCmd=curl -sf http://127.0.0.1:9090/health
+HealthCmd=python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9090/health')"
 HealthInterval=30s
 HealthTimeout=5s
 HealthRetries=3

@@ -37,7 +37,7 @@ Network=host
 
 ContainerName=ragstuffer
 
-HealthCmd=curl -sf http://127.0.0.1:8091/health
+HealthCmd=python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8091/health')"
 HealthInterval=30s
 HealthTimeout=10s
 HealthRetries=3
