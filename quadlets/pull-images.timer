@@ -1,0 +1,10 @@
+[Unit]
+Description=Pull latest container images nightly at 3am
+Requires=pull-images.service
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,48 @@
+[Unit]
+Description=Pull latest container images for rag-suite services
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c '
+set -uo pipefail
+
+SERVICES=(
+  "ghcr.io/aclater/ragpipe:main-rocm"
+  "ghcr.io/aclater/ragstuffer:main"
+  "ghcr.io/aclater/ragwatch:main"
+  "ghcr.io/aclater/ragdeck:main"
+  "ghcr.io/aclater/ragorchestrator:main"
+  "ghcr.io/aclater/llama-vulkan:b8668"
+  "docker.io/qdrant/qdrant:v1.17.1"
+  "quay.io/sclorg/postgresql-16-c9s"
+  "ghcr.io/berriai/litellm:main-stable"
+  "ghcr.io/open-webui/open-webui:v0.8.12"
+)
+
+for img in "${SERVICES[@]}"; do
+  name=$(echo "$img" | tr "/:" "-")
+  current=$(podman images --format "{{.Digest}}" "$img" 2>/dev/null || echo "")
+  
+  if ! podman pull "$img" 2>/dev/null; then
+    echo "Failed to pull $img, skipping"
+    continue
+  fi
+  
+  new=$(podman images --format "{{.Digest}}" "$img" 2>/dev/null || echo "")
+  
+  if [[ "$current" != "$new" ]] && [[ -n "$current" ]]; then
+    svc=$(echo "$name" | sed -e "s/-main-rocm$//" -e "s/-main$//" -e "s/-b8668$//" -e "s/-v[0-9].*//")
+    if systemctl --user is-active "$svc.service" &>/dev/null; then
+      echo "Restarting $svc (image updated)"
+      systemctl --user restart "$svc.service"
+    fi
+  fi
+done
+'
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
