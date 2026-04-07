@@ -9,7 +9,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QUADLET_DIR="$HOME/.config/containers/systemd"
 CONFIG_DIR="$HOME/.config/llm-stack"
-UNITS=(postgres qdrant ramalama ragpipe litellm ragstuffer open-webui)
+UNITS=(postgres qdrant ramalama ragpipe litellm ragstuffer open-webui pull-images.timer)
 
 # ── GPU detection ────────────────────────────────────────────────────────────
 # Auto-detect GPU vendor and VRAM to select the right container image, model,
@@ -797,6 +797,8 @@ cmd_install() {
     # Copy base quadlets, then overlay host-specific files
     cp "$SCRIPT_DIR"/quadlets/*.container "$QUADLET_DIR"/
     cp "$SCRIPT_DIR"/quadlets/*.volume    "$QUADLET_DIR"/
+    cp "$SCRIPT_DIR"/quadlets/*.service   "$QUADLET_DIR"/
+    cp "$SCRIPT_DIR"/quadlets/*.timer     "$QUADLET_DIR"/
     if [[ -n "$HOST_QUADLET_SRC" && -d "$HOST_QUADLET_SRC" ]]; then
         log "Overlaying $GPU_PROFILE-specific quadlets from hosts/$GPU_PROFILE/"
         cp "$HOST_QUADLET_SRC"/*.container "$QUADLET_DIR"/ 2>/dev/null || true
@@ -882,6 +884,8 @@ cmd_uninstall() {
         rm -f "$QUADLET_DIR/$u.container"
     done
     rm -f "$QUADLET_DIR"/*.volume
+    rm -f "$QUADLET_DIR"/pull-images.service
+    rm -f "$QUADLET_DIR"/pull-images.timer
     systemctl --user daemon-reload
     ok "Quadlets removed — models preserved in ~/.local/share/ramalama/"
 }
