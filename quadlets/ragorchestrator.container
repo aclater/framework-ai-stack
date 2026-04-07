@@ -22,9 +22,10 @@ Environment=RAGPIPE_URL=http://host.containers.internal:8090
 Environment=RAGWATCH_URL=http://host.containers.internal:9090
 Environment=QDRANT_URL=http://host.containers.internal:6333
 Environment=RAGORCHESTRATOR_PORT=8095
-Environment=MODEL_URL=http://host.containers.internal:8080
+# LLM endpoint — must use 127.0.0.1 not hostname to avoid IPv6 resolution
+# llama-vulkan listens on IPv4 only; Fedora resolves localhost/hostnames to ::1 first
+Environment=MODEL_URL=http://127.0.0.1:8080
 Environment=MODEL_NAME=model.file
-Environment=RAGWATCH_URL=http://host.containers.internal:9090
 
 # Web search — disabled until TAVILY_API_KEY is configured in ragstack.env
 Environment=DISABLE_WEB_SEARCH=true
