@@ -12,7 +12,8 @@ Wants=network-online.target
 
 [Container]
 # Same CUDA image as main ramalama — provides llama-server
-Image=quay.io/ramalama/cuda:latest
+# Pinned 2026-04-07 — update: skopeo inspect docker://quay.io/ramalama/cuda:latest
+Image=quay.io/ramalama/cuda:0.18.0
 
 # NVIDIA GPU passthrough via CDI
 AddDevice=nvidia.com/gpu=all
