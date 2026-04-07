@@ -49,11 +49,42 @@ check_has_healthcmd() {
     fi
 }
 
+check_no_curl_in_healthcmd() {
+    local file="$1"
+    local desc="$2"
+    if grep -q 'HealthCmd=.*curl' "$QUADLET_DIR/$file" 2>/dev/null; then
+        log_fail "$desc"
+    else
+        log_pass "$desc"
+    fi
+}
+
 check_env_var() {
     local file="$1"
     local var="$2"
     local desc="$3"
     if grep -q "$var" "$QUADLET_DIR/$file" 2>/dev/null; then
+        log_pass "$desc"
+    else
+        log_fail "$desc"
+    fi
+}
+
+check_qdrant_collections() {
+    local count
+    count=$(curl -s --max-time 5 http://localhost:6333/collections 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print(sum(1 for c in d.get("result",{}).get("collections",[])))' 2>/dev/null || echo "0")
+    if [[ "$count" -ge 4 ]]; then
+        log_pass "Qdrant has $count collections (expected 4)"
+    else
+        log_fail "Qdrant has $count collections (expected 4)"
+    fi
+}
+
+check_network_connectivity() {
+    local container="$1"
+    local target="$2"
+    local desc="$3"
+    if podman exec "$container" curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$target" 2>/dev/null | grep -qE "^(200|503)"; then
         log_pass "$desc"
     else
         log_fail "$desc"
@@ -84,6 +115,7 @@ for f in "$QUADLET_DIR"/*.container; do
     fname=$(basename "$f")
     check_no_latest "$fname" "No :latest tags in $fname"
     check_has_healthcmd "$fname" "HealthCmd defined in $fname"
+    check_no_curl_in_healthcmd "$fname" "No curl in HealthCmd in $fname"
 done
 
 if [[ -f "$HOME/.config/llm-stack/ragstack.env" ]]; then
@@ -97,6 +129,15 @@ for f in "$QUADLET_DIR"/llama-vulkan.container "$QUADLET_DIR"/ragorchestrator.co
     fname=$(basename "$f")
     check_env_var "$fname" "HSA_OVERRIDE_GFX_VERSION=11.5.1" "HSA_OVERRIDE_GFX_VERSION set in $fname"
 done
+
+check_qdrant_collections
+
+echo ""
+echo "--- Network connectivity ---"
+check_network_connectivity "ragpipe" "http://host.containers.internal:6333" "ragpipe can reach Qdrant"
+check_network_connectivity "ragpipe" "http://host.containers.internal:5432" "ragpipe can reach Postgres"
+check_network_connectivity "ragorchestrator" "http://host.containers.internal:8090" "ragorchestrator can reach ragpipe"
+check_network_connectivity "ragwatch" "http://host.containers.internal:8090/metrics" "ragwatch can reach ragpipe metrics"
 
 echo ""
 echo "--- Running containers ---"
