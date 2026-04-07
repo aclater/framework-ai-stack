@@ -24,7 +24,7 @@ Environment=QDRANT_URL=http://host.containers.internal:6333
 EnvironmentFile=%h/.config/llm-stack/ragstack.env
 
 # Health check
-HealthCmd=curl -sf http://127.0.0.1:8092/health
+HealthCmd=python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8092/health')"
 HealthInterval=30s
 HealthTimeout=5s
 HealthRetries=3
