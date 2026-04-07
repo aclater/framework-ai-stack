@@ -4,7 +4,7 @@
 
 framework-ai-stack is a local AI inference platform with live retrieval-augmented generation (RAG). It runs on a single Framework Desktop (AMD Ryzen AI Max+ 395, 128 GB unified memory, Fedora 43) as rootless Podman containers managed by systemd quadlets.
 
-The system serves a Qwen3.5-35B-A3B model behind a ragpipe that automatically enriches every query with relevant content from a curated document corpus. Documents are ingested from Google Drive, git repositories, and web URLs without requiring model restarts.
+The system serves a Qwen3-32B dense model behind a ragpipe that automatically enriches every query with relevant content from a curated document corpus. Documents are ingested from Google Drive, git repositories, and web URLs without requiring model restarts. An optional ragorchestrator layer adds adaptive complexity classification and Self-RAG for multi-pass retrieval.
 
 ## Request flow
 
@@ -14,22 +14,28 @@ Client (Claude Code, Open WebUI, curl)
   ▼  :4000
 LiteLLM proxy
   │  Routes all aliases (default, reasoning, code, fast)
+  ▼  :8095 (optional agentic path)
+ragorchestrator
+  │  1. Complexity classification (simple/complex/external)
+  │  2. Self-RAG adaptive retrieval loop (multi-pass when needed)
+  │  3. Web search (when TAVILY_API_KEY configured)
+  │  Falls back to direct → ragpipe when DISABLE_WEB_SEARCH=true
   ▼  :8090
 ragpipe
   │  1. Embed the user's query
   │  2. Search Qdrant for top-K candidate vectors
   │  3. Batch-hydrate chunk text from the document store
-  │  4. Rerank with cross-encoder (cross-encoder/ms-marco-MiniLM-L-6-v2)
+  │  4. Rerank with cross-encoder (MiniLM-L-6-v2)
   │  5. Format top-N chunks with [doc_id:chunk_id] labels
   │  6. Inject corpus-preferring system prompt + context
   │  7. Forward to model
   │  8. Post-process: parse citations, validate, classify grounding
   │  9. Attach rag_metadata, emit audit log
   ▼  :8080
-Qwen3.5-35B-A3B (llama-server via RamaLama)
-  │  model + quant + KV cache selected by auto-tuner
+Qwen3-32B dense Q4_K_M (llama-vulkan via Vulkan RADV on gfx1151)
+  │  ~19 GB GTT, 32B fully activated parameters per token
   ▼
-AMD Ryzen AI Max+ 395 (ROCm, gfx1151)
+AMD Ryzen AI Max+ 395 (gfx1151, Vulkan RADV)
 ```
 
 ## Ingestion flow
@@ -81,11 +87,20 @@ The `doc_id` is a deterministic UUID5 derived from the source URI, ensuring the 
 
 **Image:** `quay.io/sclorg/postgresql-16-c9s`
 
-### RamaLama / llama-server (:8080)
+### llama-vulkan (:8080)
 
-Serves the Qwen3.5-35B-A3B model via llama-server. The model uses Mixture of Experts (MoE) with 3B active parameters from 35B total. KV cache type, context size, and parallel slots are set by the auto-tuner (`./llm-stack.sh tune`). Flash attention is always enabled.
+Serves the Qwen3-32B dense model via llama.cpp with Vulkan RADV backend on gfx1151. Dense model — 32B parameters all activated per token, ~19 GB GTT. Thinking mode should be disabled for RAG queries (`/nothink` model alias) to avoid slow chain-of-thought. All model weights and KV cache reside in GTT (system RAM mapped for GPU access) — gfx1151 has no discrete VRAM, this is the intended architecture.
 
-**Image:** `quay.io/ramalama/rocm:latest`
+**Image:** `ghcr.io/aclater/llama-vulkan:b8668`
+
+### ragorchestrator (:8095)
+
+LangGraph-based agentic orchestration layer providing adaptive complexity classification and Self-RAG multi-pass retrieval. Classifies each query as simple/complex/external and decides whether to use direct retrieval or run the Self-RAG reflection loop. Short-circuits Self-RAG when ragpipe grounding=general (optimization pending).
+
+`DISABLE_WEB_SEARCH=true` is set by default until `TAVILY_API_KEY` is configured.
+
+**Source:** [github.com/aclater/ragorchestrator](https://github.com/aclater/ragorchestrator)
+**Image:** `ghcr.io/aclater/ragorchestrator:main`
 
 ### ragstuffer
 
@@ -114,8 +129,13 @@ Chat interface. Connects to LiteLLM as its OpenAI backend, so all queries automa
 | 4000 | LiteLLM proxy | HTTP (OpenAI API) |
 | 5432 | PostgreSQL | PostgreSQL |
 | 6333 | Qdrant | HTTP |
-| 8080 | llama-server | HTTP (OpenAI API) |
+| 8080 | llama-vulkan | HTTP (llama.cpp Vulkan) |
 | 8090 | ragpipe | HTTP (OpenAI API) |
+| 8091 | ragstuffer | HTTP (admin + metrics) |
+| 8093 | ragstuffer-mpep | HTTP (MPEP collection) |
+| 8092 | ragdeck | HTTP (admin UI) |
+| 8095 | ragorchestrator | HTTP (LangGraph agentic) |
+| 9090 | ragwatch | HTTP (Prometheus) |
 
 ## Data stores
 
@@ -130,21 +150,24 @@ Chat interface. Connects to LiteLLM as its OpenAI backend, so all queries automa
 ## Hardware
 
 - **CPU:** AMD Ryzen AI Max+ 395 (Zen 5, 16 cores / 32 threads)
-- **GPU:** Radeon 8060S (RDNA 3.5, gfx1151, ROCm)
-- **Memory:** 128 GB unified (64 GB VRAM + 64 GB GTT + 62 GB system RAM at 64/64 BIOS split)
+- **GPU:** Radeon 8060S (RDNA 3.5, gfx1151, Vulkan RADV)
+- **Memory:** 128 GB unified (512 MB VRAM housekeeping, ~113 GB GTT for model + KV cache)
 - **KV cache:** type and size set by auto-tuner (tune.conf)
-- **SELinux:** Enforcing on UBI containers. `SecurityLabelDisable=true` only on upstream Debian-based images (qdrant, litellm) and GPU-access containers (ramalama)
+- **SELinux:** Enforcing on UBI containers. `SecurityLabelDisable=true` only on upstream Debian-based images (qdrant, litellm) and GPU-access containers
 
 ## Container images
 
 | Container | Base image | SELinux | Reason |
 |-----------|-----------|---------|--------|
 | ragpipe | `ghcr.io/aclater/ragpipe` (UBI9/python-311) | Enforcing | Pre-built with deps + models |
+| ragorchestrator | `ghcr.io/aclater/ragorchestrator` (UBI10) | Enforcing | LangGraph agentic layer |
 | ragstuffer (CPU) | `localhost/ragstuffer` (from ubi10) | Enforcing | CPU-only poller, delegates embedding to ragpipe |
 | ragstuffer (ROCm) | `localhost/ragstuffer` (from rocm/pytorch) | Disabled | GPU embedding for AMD (auto-selected by `llm-stack.sh build`) |
 | ragstuffer (CUDA) | `localhost/ragstuffer` (from pytorch/pytorch) | Disabled | GPU embedding for NVIDIA (auto-selected by `llm-stack.sh build`) |
-| postgres | `sclorg/postgresql-16-c9s` | Enforcing | Red Hat ecosystem |
-| qdrant | `qdrant/qdrant` | Disabled | Debian binary triggers SELinux execmem denial on Fedora 43 |
-| litellm | `litellm:main-stable` | Disabled | Debian binary triggers SELinux execmem denial on Fedora 43 |
-| ramalama | `ramalama/rocm:latest` | Disabled | Requires `/dev/kfd` access for ROCm GPU compute |
-| open-webui | `open-webui:v0.8.12` | — | Upstream image |
+| postgres | `quay.io/sclorg/postgresql-16-c9s` | Enforcing | Red Hat ecosystem |
+| qdrant | `docker.io/qdrant/qdrant:v1.17.1` | Disabled | Debian binary triggers SELinux execmem denial on Fedora 43 |
+| litellm | `ghcr.io/berriai/litellm:main-stable` | Disabled | Debian binary triggers SELinux execmem denial on Fedora 43 |
+| llama-vulkan | `ghcr.io/aclater/llama-vulkan:b8668` | Disabled | Vulkan RADV on gfx1151, requires `/dev/kfd` + `/dev/dri` |
+| ragwatch | `ghcr.io/aclater/ragwatch:main` | Enforcing | Prometheus aggregation |
+| ragdeck | `ghcr.io/aclater/ragdeck:main` | Enforcing | Admin UI |
+| open-webui | `ghcr.io/open-webui/open-webui:v0.8.12` | — | Upstream image |

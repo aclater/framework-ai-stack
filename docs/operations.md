@@ -47,9 +47,44 @@ postgres
 qdrant
   ├── ragpipe (vector search)
   └── ragstuffer (vector upsert)
-ramalama
+llama-vulkan
   └── ragpipe (model inference)
 ```
+
+### Container update procedures
+
+```bash
+# Stop all services
+./llm-stack.sh down
+
+# Pull updated images
+podman pull ghcr.io/aclater/ragpipe:main-rocm
+podman pull ghcr.io/aclater/ragstuffer:main
+podman pull ghcr.io/aclater/ragorchestrator:main
+podman pull ghcr.io/aclater/ragwatch:main
+podman pull ghcr.io/aclater/ragdeck:main
+podman pull ghcr.io/aclater/llama-vulkan:b8668
+
+# Rebuild local images if needed
+./llm-stack.sh build
+
+# Restart
+./llm-stack.sh up
+```
+
+### Model swap
+
+To hot-swap the model without rebuilding images:
+
+```bash
+./llm-stack.sh swap <model-name>
+```
+
+For a full model change:
+1. Update `~/.config/llm-stack/ragstack.env` with new `MODEL_NAME` and `MODEL_URL`
+2. Pull new image or update existing
+3. `./llm-stack.sh down && ./llm-stack.sh up`
+4. Verify: `curl http://localhost:8090/health`
 
 ## Adding document sources
 
