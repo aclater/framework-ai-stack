@@ -13,6 +13,8 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
+  attestations: write
 
 env:
   REGISTRY: ghcr.io
@@ -68,6 +70,7 @@ jobs:
             type=raw,value=${{ steps.tag.outputs.llama_tag }}
 
       - name: Build (PR) / Build & push (main/tag)
+        id: build
         uses: docker/build-push-action@v7.0.0
         with:
           context: containers/llama-vulkan
@@ -75,3 +78,30 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Generate SBOM
+        if: github.event_name != 'pull_request'
+        uses: anchore/sbom-action@v0.24.0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main
+          format: spdx-json
+          output-file: sbom.spdx.json
+          upload-artifact: false
+
+      - name: Attest SBOM
+        if: github.event_name != 'pull_request'
+        uses: actions/attest@v4.1.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          predicate-type: https://spdx.dev/Document
+          predicate-path: sbom.spdx.json
+          push-to-registry: true
+
+      - name: Upload SBOM artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v7.0.0
+        with:
+          name: sbom-llama-vulkan-${{ github.run_id }}
+          path: sbom.spdx.json
+          retention-days: 90
